@@ -1,52 +1,62 @@
 import streamlit as st
-from datetime import datetime
-import os
 from openai import OpenAI
+from datetime import datetime
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+import os, pickle
 
+# --- OpenAI ---
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-SAVE_PATH = "Journals"
-os.makedirs(SAVE_PATH, exist_ok=True)
+# --- Google OAuth (User Login) ---
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
-st.set_page_config(page_title="AI Journal", layout="centered")
-st.title("🌿 AI Journaling Assistant")
+def get_drive_service():
+    creds = None
+    token_file = "token.pkl"
 
-tab1, tab2 = st.tabs(["✍️ New Entry", "🧠 Journal Insights"])
+    # Load cached token if exists
+    if os.path.exists(token_file):
+        with open(token_file, "rb") as token:
+            creds = pickle.load(token)
 
-with tab1:
-    st.subheader("Write your thoughts")
-    entry = st.text_area("Today's reflection:", height=300, placeholder="How are you feeling today?")
-    if st.button("Save Entry"):
-        if entry.strip():
-            filename = f"Journal_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.txt"
-            with open(os.path.join(SAVE_PATH, filename), "w") as f:
-                f.write(entry.strip())
-            st.success(f"Saved journal entry: {filename}")
-        else:
-            st.warning("Please write something before saving.")
+    # If no (or expired) credentials, log in
+    if not creds or not creds.valid:
+        flow = InstalledAppFlow.from_client_config(
+            {"installed": st.secrets["gcp_oauth_client"]}, SCOPES
+        )
+        creds = flow.run_local_server(port=0)
+        with open(token_file, "wb") as token:
+            pickle.dump(creds, token)
 
-with tab2:
-    st.subheader("Ask your journals a question")
-    question = st.text_input("What would you like to know?")
-    if st.button("Ask AI"):
-        journal_texts = []
-        for filename in sorted(os.listdir(SAVE_PATH)):
-            if filename.endswith(".txt"):
-                with open(os.path.join(SAVE_PATH, filename), "r") as f:
-                    journal_texts.append(f"--- {filename} ---\n{f.read()}")
+    return build("drive", "v3", credentials=creds)
 
-        all_journals = "\n\n".join(journal_texts)
+drive_service = get_drive_service()
+FOLDER_ID = st.secrets["GOOGLE_DRIVE_FOLDER_ID"]
 
-        if not all_journals:
-            st.warning("No journal entries found yet.")
-        elif question.strip():
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You analyze a person’s journal entries and provide factual, reflective insights when asked."},
-                    {"role": "user", "content": f"Here are my journals:\n{all_journals}\n\nQuestion: {question}"}
-                ]
-            )
-            st.text_area("💬 AI Insight:", value=response.choices[0].message.content.strip(), height=300)
-        else:
-            st.warning("Please enter a question.")
+# --- Streamlit UI ---
+st.title("AI Journal Assistant ✍️")
+
+entry = st.text_area("Write your journal entry here:", height=300)
+if st.button("Save to Google Drive"):
+    if entry.strip():
+        filename = f"Journal_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(entry)
+
+        file_metadata = {
+            "name": filename,
+            "mimeType": "text/plain",
+            "parents": [FOLDER_ID],
+        }
+        media = MediaFileUpload(filename, mimetype="text/plain")
+        drive_service.files().create(
+            body=file_metadata, media_body=media, fields="id"
+        ).execute()
+
+        st.success(f"✅ Saved to Google Drive as {filename}")
+        os.remove(filename)
+    else:
+        st.warning("Please write something before saving.")
+Replace app.py with Google Drive login version
