@@ -21,21 +21,22 @@ def get_drive_service():
         with open(token_file, "rb") as token:
             creds = pickle.load(token)
 
-    # If no (or expired) credentials, log in
+    # If no (or expired) credentials, log in manually
     if not creds or not creds.valid:
         flow = InstalledAppFlow.from_client_config(
             {"installed": st.secrets["gcp_oauth_client"]}, SCOPES
         )
-        auth_url, _ = flow.authorization_url(prompt='consent')
-st.write("### 🔐 Step 1: Connect your Google Account")
-st.markdown(f"[Click here to sign in with Google]({auth_url})")
 
-auth_code = st.text_input("Paste the authorization code here:")
-if auth_code:
-    flow.fetch_token(code=auth_code)
-    creds = flow.credentials
-    with open(token_file, "wb") as token:
-        pickle.dump(creds, token)
+        auth_url, _ = flow.authorization_url(prompt='consent')
+        st.write("### 🔐 Step 1: Connect your Google Account")
+        st.markdown(f"[Click here to sign in with Google]({auth_url})")
+
+        auth_code = st.text_input("Paste the authorization code here:")
+        if auth_code:
+            flow.fetch_token(code=auth_code)
+            creds = flow.credentials
+            with open(token_file, "wb") as token:
+                pickle.dump(creds, token)
 
     return build("drive", "v3", credentials=creds)
 
