@@ -1,12 +1,9 @@
 import streamlit as st
 from openai import OpenAI
 from datetime import datetime
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
-import pickle
-import os
+from google.oauth2 import service_account
 import io
 
 st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
@@ -14,46 +11,20 @@ st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
 # -----------------------------
 # Configuration
 # -----------------------------
-FOLDER_ID = "1Bg0ZxeC8ZTzha9Ftg0xEGTuK4ARm2jy1"  # Hardcoded Google Drive folder ID
+FOLDER_ID = "1Bg0ZxeC8ZTzha9Ftg0xEGTuK4ARm2jy1"  # Hardcoded folder ID
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
-# Google Drive integration
+# Google Drive service (service account)
 # -----------------------------
-def get_drive_service():
-    creds = None
-    token_path = "token.pickle"
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
 
-    if os.path.exists(token_path):
-        with open(token_path, "rb") as token:
-            creds = pickle.load(token)
+creds = service_account.Credentials.from_service_account_info(
+    SERVICE_ACCOUNT_INFO, scopes=SCOPES
+)
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            client_config = {
-                "installed": {
-                    "client_id": st.secrets["gcp_oauth_client"]["client_id"],
-                    "client_secret": st.secrets["gcp_oauth_client"]["client_secret"],
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"]
-                }
-            }
-            flow = InstalledAppFlow.from_client_config(
-                client_config,
-                ["https://www.googleapis.com/auth/drive.file"]
-            )
-            st.info("⚠️ First-time setup: Click the link below, authorize, and paste the code here.")
-            creds = flow.run_console()
-
-        with open(token_path, "wb") as token:
-            pickle.dump(creds, token)
-
-    return build("drive", "v3", credentials=creds)
-
-drive_service = get_drive_service()
+drive_service = build("drive", "v3", credentials=creds)
 
 # -----------------------------
 # Helper functions
