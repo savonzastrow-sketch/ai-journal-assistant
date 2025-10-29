@@ -9,7 +9,6 @@ import pickle
 import os
 import io
 
-st.write(st.secrets)
 st.set_page_config(page_title="AI Journaling Assistant")
 
 # -----------------------------
