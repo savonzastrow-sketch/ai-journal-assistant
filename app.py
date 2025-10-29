@@ -1,4 +1,3 @@
-st.write(st.secrets)
 import streamlit as st
 from openai import OpenAI
 from datetime import datetime
