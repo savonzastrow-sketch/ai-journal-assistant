@@ -51,7 +51,7 @@ def get_drive_service():
 
     return build("drive", "v3", credentials=creds)
 
-FOLDER_ID = st.secrets["GOOGLE_DRIVE_FOLDER_ID"]
+FOLDER_ID = "1Bg0ZxeC8ZTzha9Ftg0xEGTuK4ARm2jy1"
 drive_service = get_drive_service()
 
 # -----------------------------
