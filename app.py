@@ -3,44 +3,43 @@ from openai import OpenAI
 from datetime import datetime
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-import os, pickle
+import streamlit as st
+import pickle
+import os
 
-# --- OpenAI ---
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
-# --- Google OAuth (User Login) ---
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-
+# Define the OAuth flow
 def get_drive_service():
     creds = None
-    token_file = "token.pkl"
+    token_path = "token.pickle"
 
-    # Load cached token if exists
-    if os.path.exists(token_file):
-        with open(token_file, "rb") as token:
+    if os.path.exists(token_path):
+        with open(token_path, "rb") as token:
             creds = pickle.load(token)
 
-    # If no (or expired) credentials, log in manually
     if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_config(
-            {"installed": st.secrets["gcp_oauth_client"]}, SCOPES
-        )
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            client_config = {
+                "installed": {
+                    "client_id": st.secrets["gcp_oauth_client"]["client_id"],
+                    "client_secret": st.secrets["gcp_oauth_client"]["client_secret"],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": ["http://localhost"]
+                }
+            }
 
-        auth_url, _ = flow.authorization_url(prompt='consent')
-        st.write("### 🔐 Step 1: Connect your Google Account")
-        st.markdown(f"[Click here to sign in with Google]({auth_url})")
+            flow = InstalledAppFlow.from_client_config(
+                client_config, ["https://www.googleapis.com/auth/drive.file"]
+            )
 
-        auth_code = st.text_input("Paste the authorization code here:")
-        if auth_code:
-            flow.fetch_token(code=auth_code)
-            creds = flow.credentials
-            with open(token_file, "wb") as token:
-                pickle.dump(creds, token)
+            creds = flow.run_local_server(port=0)
+
+        with open(token_path, "wb") as token:
+            pickle.dump(creds, token)
 
     return build("drive", "v3", credentials=creds)
-
-drive_service = get_drive_service()
 FOLDER_ID = st.secrets["GOOGLE_DRIVE_FOLDER_ID"]
 
 # --- Streamlit UI ---
