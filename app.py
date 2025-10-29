@@ -9,11 +9,12 @@ import pickle
 import os
 import io
 
-st.set_page_config(page_title="AI Journaling Assistant")
+st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
 
 # -----------------------------
-# Initialize OpenAI client
+# Configuration
 # -----------------------------
+FOLDER_ID = "1Bg0ZxeC8ZTzha9Ftg0xEGTuK4ARm2jy1"  # Hardcoded Google Drive folder ID
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
@@ -37,37 +38,34 @@ def get_drive_service():
                     "client_secret": st.secrets["gcp_oauth_client"]["client_secret"],
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": ["http://localhost"]
+                    "redirect_uris": ["urn:ietf:wg:oauth:2.0:oob"]
                 }
             }
             flow = InstalledAppFlow.from_client_config(
                 client_config,
                 ["https://www.googleapis.com/auth/drive.file"]
             )
-            creds = flow.run_local_server(port=0)
+            st.info("⚠️ First-time setup: Click the link below, authorize, and paste the code here.")
+            creds = flow.run_console()
 
         with open(token_path, "wb") as token:
             pickle.dump(creds, token)
 
     return build("drive", "v3", credentials=creds)
 
-FOLDER_ID = "1Bg0ZxeC8ZTzha9Ftg0xEGTuK4ARm2jy1"
 drive_service = get_drive_service()
 
 # -----------------------------
 # Helper functions
 # -----------------------------
 def save_entry_to_drive(entry_text):
-    """Save journal entry as a text file in Google Drive"""
     now = datetime.now()
     file_name = f"Journal_{now.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-
     file_metadata = {"name": file_name, "parents": [FOLDER_ID]}
     media = MediaIoBaseUpload(io.BytesIO(entry_text.encode("utf-8")), mimetype="text/plain")
     drive_service.files().create(body=file_metadata, media_body=media).execute()
 
 def read_all_entries_from_drive():
-    """Read all journal entries from the folder"""
     query = f"'{FOLDER_ID}' in parents and mimeType='text/plain'"
     results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     files = results.get("files", [])
@@ -86,7 +84,6 @@ def read_all_entries_from_drive():
     return all_text
 
 def ask_ai_about_entries(question):
-    """Send the combined journal entries and question to OpenAI"""
     entries_text = read_all_entries_from_drive()
     if not entries_text.strip():
         return "No journal entries available yet."
@@ -99,23 +96,26 @@ def ask_ai_about_entries(question):
     return response.choices[0].message.content
 
 # -----------------------------
-# Streamlit UI
+# Streamlit UI - Mobile-Friendly
 # -----------------------------
-st.title("AI Journaling Assistant")
+st.title("📝 AI Journaling Assistant")
 
-# Journal entry input
-entry = st.text_area("Write your journal entry here:", height=200)
-if st.button("Save Entry"):
+# ---- Journal Entry Section ----
+st.subheader("Write your journal entry")
+entry = st.text_area("", height=250, placeholder="Start typing your journal entry here...")
+if st.button("💾 Save Entry"):
     if entry.strip():
         save_entry_to_drive(entry)
-        st.success("Entry saved to Google Drive!")
+        st.success("✅ Entry saved to Google Drive!")
     else:
-        st.warning("Please write something before saving.")
+        st.warning("⚠️ Please write something before saving.")
 
-# AI analysis
-st.subheader("Ask AI about your journal")
-question = st.text_input("Ask a question about your past entries:")
-if st.button("Get AI Insights") and question.strip():
-    with st.spinner("Analyzing your journal..."):
+st.markdown("---")
+
+# ---- AI Query Section ----
+st.subheader("Ask AI about your past journal entries")
+question = st.text_input("Type your question here:")
+if st.button("🤖 Get AI Insights") and question.strip():
+    with st.spinner("Analyzing your journal entries..."):
         answer = ask_ai_about_entries(question)
         st.success(answer)
