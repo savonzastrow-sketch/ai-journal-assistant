@@ -11,7 +11,7 @@ st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
 # -----------------------------
 # Configuration
 # -----------------------------
-FOLDER_ID = "1Bg0ZxeC8ZTzha9Ftg0xEGTuK4ARm2jy1"  # Hardcoded folder ID
+FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Hardcoded folder ID
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
