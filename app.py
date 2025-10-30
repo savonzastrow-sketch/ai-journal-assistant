@@ -11,20 +11,36 @@ st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
 # -----------------------------
 # Configuration
 # -----------------------------
-FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Hardcoded folder ID
+FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Replace with your Shared Drive or Folder ID
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
-# Google Drive service (service account)
+# Google Drive Service (delegated access)
 # -----------------------------
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
+def get_drive_service():
+    SCOPES = [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/drive.metadata"
+    ]
 
-creds = service_account.Credentials.from_service_account_info(
-    SERVICE_ACCOUNT_INFO, scopes=SCOPES
-)
+    SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
 
-drive_service = build("drive", "v3", credentials=creds)
+    # 👇 Replace this with your business Workspace email
+    DELEGATED_EMAIL = "stefan@zeitadvisory.com"
+
+    # Create credentials and impersonate your business user
+    creds = service_account.Credentials.from_service_account_info(
+        SERVICE_ACCOUNT_INFO,
+        scopes=SCOPES
+    )
+    delegated_creds = creds.with_subject(DELEGATED_EMAIL)
+
+    # Build the Drive service with the delegated credentials
+    service = build("drive", "v3", credentials=delegated_creds)
+    return service
+
+drive_service = get_drive_service()
 
 # -----------------------------
 # Helper functions
