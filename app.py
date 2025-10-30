@@ -11,7 +11,7 @@ st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
 # -----------------------------
 # Configuration
 # -----------------------------
-FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Replace with your Shared Drive or Folder ID
+FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Replace with your Shared Drive folder ID
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
@@ -48,13 +48,25 @@ drive_service = get_drive_service()
 def save_entry_to_drive(entry_text):
     now = datetime.now()
     file_name = f"Journal_{now.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-    file_metadata = {"name": file_name, "parents": [FOLDER_ID]}
+    file_metadata = {
+        "name": file_name,
+        "parents": [FOLDER_ID]
+    }
     media = MediaIoBaseUpload(io.BytesIO(entry_text.encode("utf-8")), mimetype="text/plain")
-    drive_service.files().create(body=file_metadata, media_body=media).execute()
+    drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        supportsAllDrives=True
+    ).execute()
 
 def read_all_entries_from_drive():
     query = f"'{FOLDER_ID}' in parents and mimeType='text/plain'"
-    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    results = drive_service.files().list(
+        q=query,
+        fields="files(id, name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
     files = results.get("files", [])
 
     all_text = ""
@@ -75,7 +87,10 @@ def ask_ai_about_entries(question):
     if not entries_text.strip():
         return "No journal entries available yet."
 
-    prompt = f"You are an AI journaling assistant. The user has provided the following journal entries:\n\n{entries_text}\n\nQuestion: {question}\nAnswer concisely based on the entries."
+    prompt = (
+        f"You are an AI journaling assistant. The user has provided the following journal entries:\n\n"
+        f"{entries_text}\n\nQuestion: {question}\nAnswer concisely based on the entries."
+    )
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}]
