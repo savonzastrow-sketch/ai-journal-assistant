@@ -113,28 +113,30 @@ st.subheader("Write your journal entry")
 if "entry_text" not in st.session_state:
     st.session_state.entry_text = ""
 
-col1, col2 = st.columns([4, 1])
-with col1:
-    st.session_state.entry_text = st.text_area(
-        "", 
-        value=st.session_state.entry_text, 
-        height=250, 
-        placeholder="Start typing your journal entry here..."
-    )
+# journal input box
+st.session_state.entry_text = st.text_area(
+    "",
+    value=st.session_state.entry_text,
+    height=250,
+    placeholder="Start typing your journal entry here..."
+)
+
+# buttons row (Save + Clear aligned right)
+col1, col2, col3 = st.columns([4, 1, 1])
 with col2:
+    if st.button("💾 Save Entry"):
+        if st.session_state.entry_text.strip():
+            success, msg = save_entry_to_drive(st.session_state.entry_text)
+            if success:
+                st.success(msg)
+            else:
+                st.error(msg)
+        else:
+            st.warning("⚠️ Please write something before saving.")
+with col3:
     if st.button("🧹 Clear Entry"):
         st.session_state.entry_text = ""
         st.rerun()
-
-if st.button("💾 Save Entry"):
-    if st.session_state.entry_text.strip():
-        success, msg = save_entry_to_drive(st.session_state.entry_text)
-        if success:
-            st.success(msg)
-        else:
-            st.error(msg)
-    else:
-        st.warning("⚠️ Please write something before saving.")
 
 st.markdown("---")
 
@@ -146,24 +148,28 @@ if "question_text" not in st.session_state:
 if "ai_answer" not in st.session_state:
     st.session_state.ai_answer = ""
 
-col3, col4 = st.columns([4, 1])
-with col3:
-    st.session_state.question_text = st.text_input(
-        "Type your question here:",
-        value=st.session_state.question_text
-    )
-with col4:
+st.session_state.question_text = st.text_input(
+    "Type your question here:",
+    value=st.session_state.question_text
+)
+
+# bottom-right buttons for AI section
+col4, col5, col6 = st.columns([4, 1, 1])
+with col5:
+    if st.button("🤖 Get AI Insights"):
+        if st.session_state.question_text.strip():
+            with st.spinner("Analyzing your journal entries..."):
+                st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text)
+                st.success(st.session_state.ai_answer)
+        else:
+            st.warning("⚠️ Please type a question before asking.")
+with col6:
     if st.button("🧹 Clear Q&A"):
         st.session_state.question_text = ""
         st.session_state.ai_answer = ""
         st.rerun()
 
-if st.button("🤖 Get AI Insights") and st.session_state.question_text.strip():
-    with st.spinner("Analyzing your journal entries..."):
-        st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text)
-        st.success(st.session_state.ai_answer)
-
-# Display AI answer if available
+# display AI answer
 if st.session_state.ai_answer:
     st.markdown("### 💡 AI Response:")
     st.info(st.session_state.ai_answer)
