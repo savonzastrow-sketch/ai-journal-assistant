@@ -41,23 +41,64 @@ drive_service = get_drive_service()
 # -----------------------------
 # Helper functions
 # -----------------------------
-def save_entry_to_drive(entry_text):
-    try:
-        now = datetime.now(ZoneInfo("America/New_York"))  # Use EST
-        file_name = f"Journal_{now.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
-        file_metadata = {"name": file_name, "parents": [FOLDER_ID]}
-        media = MediaIoBaseUpload(io.BytesIO(entry_text.encode("utf-8")), mimetype="text/plain")
-        drive_service.files().create(
+def get_or_create_monthly_file():
+    """Find or create a monthly journal file (e.g., Journal_2025-11.txt)."""
+    now = datetime.now(ZoneInfo("America/New_York"))
+    month_file_name = f"Journal_{now.strftime('%Y-%m')}.txt"
+
+    query = f"'{FOLDER_ID}' in parents and name='{month_file_name}' and mimeType='text/plain'"
+    results = drive_service.files().list(
+        q=query,
+        fields="files(id, name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+    files = results.get("files", [])
+
+    if files:
+        return files[0]["id"]
+    else:
+        file_metadata = {"name": month_file_name, "parents": [FOLDER_ID]}
+        media = MediaIoBaseUpload(io.BytesIO(b""), mimetype="text/plain")
+        file = drive_service.files().create(
             body=file_metadata,
             media_body=media,
             supportsAllDrives=True
         ).execute()
-        return True, "✅ Entry saved to Google Drive!"
+        return file["id"]
+
+def append_entry_to_monthly_file(entry_text):
+    """Append a new journal entry to the current month's file."""
+    try:
+        file_id = get_or_create_monthly_file()
+        request = drive_service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.seek(0)
+        existing_content = fh.read().decode("utf-8")
+
+        now = datetime.now(ZoneInfo("America/New_York"))
+        new_entry = f"\n\n---\n🗓️ {now.strftime('%B %d, %Y %I:%M %p EST')}\n{entry_text.strip()}\n"
+
+        updated_content = existing_content + new_entry
+
+        media = MediaIoBaseUpload(io.BytesIO(updated_content.encode("utf-8")), mimetype="text/plain")
+        drive_service.files().update(
+            fileId=file_id,
+            media_body=media,
+            supportsAllDrives=True
+        ).execute()
+
+        return True, f"✅ Entry saved to {now.strftime('%B %Y')} journal!"
     except Exception as e:
         return False, f"⚠️ Failed to save entry: {e}"
 
 @st.cache_data(ttl=300)
 def read_all_entries_from_drive():
+    """Read all monthly journal files."""
     try:
         query = f"'{FOLDER_ID}' in parents and mimeType='text/plain'"
         results = drive_service.files().list(
@@ -66,7 +107,7 @@ def read_all_entries_from_drive():
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
-        files = results.get("files", [])
+        files = sorted(results.get("files", []), key=lambda x: x["name"])
 
         all_text = ""
         for f in files:
@@ -125,7 +166,7 @@ col1, col2, col3 = st.columns([1, 4, 1])
 with col1:
     if st.button("💾 Save Entry"):
         if st.session_state.entry_text.strip():
-            success, msg = save_entry_to_drive(st.session_state.entry_text)
+            success, msg = append_entry_to_monthly_file(st.session_state.entry_text)
             if success:
                 st.success(msg)
             else:
