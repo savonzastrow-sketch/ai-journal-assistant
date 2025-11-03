@@ -43,7 +43,7 @@ drive_service = get_drive_service()
 # -----------------------------
 def save_entry_to_drive(entry_text):
     try:
-        now = datetime.now(ZoneInfo("America/New_York"))  # EST timezone
+        now = datetime.now(ZoneInfo("America/New_York"))  # Use EST
         file_name = f"Journal_{now.strftime('%Y-%m-%d_%H-%M-%S')}.txt"
         file_metadata = {"name": file_name, "parents": [FOLDER_ID]}
         media = MediaIoBaseUpload(io.BytesIO(entry_text.encode("utf-8")), mimetype="text/plain")
@@ -113,7 +113,6 @@ st.subheader("Write your journal entry")
 if "entry_text" not in st.session_state:
     st.session_state.entry_text = ""
 
-# journal input box
 st.session_state.entry_text = st.text_area(
     "",
     value=st.session_state.entry_text,
@@ -121,9 +120,9 @@ st.session_state.entry_text = st.text_area(
     placeholder="Start typing your journal entry here..."
 )
 
-# buttons row (Save + Clear aligned right)
-col1, col2, col3 = st.columns([4, 1, 1])
-with col2:
+# Buttons below the entry box
+col1, col2, col3 = st.columns([1, 4, 1])
+with col1:
     if st.button("💾 Save Entry"):
         if st.session_state.entry_text.strip():
             success, msg = save_entry_to_drive(st.session_state.entry_text)
@@ -153,9 +152,9 @@ st.session_state.question_text = st.text_input(
     value=st.session_state.question_text
 )
 
-# bottom-right buttons for AI section
-col4, col5, col6 = st.columns([4, 1, 1])
-with col5:
+# Buttons below AI section
+col4, col5, col6 = st.columns([1, 4, 1])
+with col4:
     if st.button("🤖 Get AI Insights"):
         if st.session_state.question_text.strip():
             with st.spinner("Analyzing your journal entries..."):
@@ -169,7 +168,7 @@ with col6:
         st.session_state.ai_answer = ""
         st.rerun()
 
-# display AI answer
+# Display AI answer
 if st.session_state.ai_answer:
     st.markdown("### 💡 AI Response:")
     st.info(st.session_state.ai_answer)
