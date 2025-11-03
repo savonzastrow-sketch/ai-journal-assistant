@@ -181,7 +181,7 @@ with col3:
 st.markdown("---")
 
 # ---- AI Query Section ----
-st.subheader("Ask AI about your past journal entries")
+st.subheader("AI Journal Query")
 
 if "question_text" not in st.session_state:
     st.session_state.question_text = ""
