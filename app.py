@@ -154,12 +154,13 @@ st.subheader("Write your journal entry")
 if "entry_text" not in st.session_state:
     st.session_state.entry_text = ""
 
-st.session_state.entry_text = st.text_area(
+entry_input = st.text_area(
     "",
     value=st.session_state.entry_text,
     height=250,
     placeholder="Start typing your journal entry here..."
 )
+st.session_state.entry_text = entry_input
 
 # Buttons below the entry box
 col1, col2, col3 = st.columns([1, 4, 1])
@@ -176,8 +177,7 @@ with col1:
 with col3:
     if st.button("🧹 Clear Entry"):
         st.session_state.entry_text = ""
-        st.rerun()
-
+        
 st.markdown("---")
 
 # ---- AI Query Section ----
