@@ -163,7 +163,7 @@ entry_input = st.text_area(
 st.session_state.entry_text = entry_input
 
 # Buttons below the entry box
-col_left, col_spacer, col_right = st.columns([1, 4, 1])
+col_left, col_spacer, col_right = st.columns([1, 2, 1])
 with col_left:
     if st.button("💾 Save Entry"):
         if st.session_state.entry_text.strip():
@@ -194,7 +194,7 @@ st.session_state.question_text = st.text_input(
 )
 
 # Buttons below AI section
-col_left, col_spacer, col_right = st.columns([1, 4, 1])
+col_left, col_spacer, col_right = st.columns([1, 2, 1])
 with col_left:
     if st.button("🤖 Get AI Insights"):
         if st.session_state.question_text.strip():
