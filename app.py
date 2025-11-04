@@ -212,4 +212,7 @@ with col6:
 # Display AI answer
 if st.session_state.ai_answer:
     st.markdown("### 💡 AI Response:")
-    st.info(st.session_state.ai_answer)
+    st.markdown(
+        f"<div style='background-color:#f0f2f6; padding:1rem; border-radius:10px;'>{st.session_state.ai_answer}</div>",
+        unsafe_allow_html=True
+    )
