@@ -177,6 +177,7 @@ with col_left:
 with col_right:
     if st.button("🧹 Clear Entry"):
         st.session_state.entry_text = ""
+        st.rerun()
         
 st.markdown("---")
 
