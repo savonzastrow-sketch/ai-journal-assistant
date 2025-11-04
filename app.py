@@ -163,8 +163,8 @@ entry_input = st.text_area(
 st.session_state.entry_text = entry_input
 
 # Buttons below the entry box
-col1, col2, col3 = st.columns([1, 4, 1])
-with col1:
+col_left, col_spacer, col_right = st.columns([1, 8, 1])
+with col_left:
     if st.button("💾 Save Entry"):
         if st.session_state.entry_text.strip():
             success, msg = append_entry_to_monthly_file(st.session_state.entry_text)
@@ -174,7 +174,7 @@ with col1:
                 st.error(msg)
         else:
             st.warning("⚠️ Please write something before saving.")
-with col3:
+with col_right:
     if st.button("🧹 Clear Entry"):
         st.session_state.entry_text = ""
         
@@ -194,8 +194,8 @@ st.session_state.question_text = st.text_input(
 )
 
 # Buttons below AI section
-col4, col5, col6 = st.columns([1, 4, 1])
-with col4:
+col_left, col_spacer, col_right = st.columns([1, 8, 1])
+with col_left:
     if st.button("🤖 Get AI Insights"):
         if st.session_state.question_text.strip():
             with st.spinner("Analyzing your journal entries..."):
@@ -203,7 +203,7 @@ with col4:
                 st.success(st.session_state.ai_answer)
         else:
             st.warning("⚠️ Please type a question before asking.")
-with col6:
+with col_right:
     if st.button("🧹 Clear Q&A"):
         st.session_state.question_text = ""
         st.session_state.ai_answer = ""
