@@ -200,7 +200,7 @@ with col_left:
         if st.session_state.question_text.strip():
             with st.spinner("Analyzing your journal entries..."):
                 st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text)
-                st.success(st.session_state.ai_answer)
+                pass  # AI answer will be displayed later below
         else:
             st.warning("⚠️ Please type a question before asking.")
 with col_right:
