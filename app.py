@@ -189,9 +189,11 @@ if "question_text" not in st.session_state:
 if "ai_answer" not in st.session_state:
     st.session_state.ai_answer = ""
 
-st.session_state.question_text = st.text_input(
-    "Type your question here:",
-    value=st.session_state.question_text
+st.session_state.question_text = st.text_area(
+    "",
+    value=st.session_state.question_text,
+    height=150,  # Same height as journal entry box
+    placeholder="Type your question here..."
 )
 
 # Buttons below AI section
