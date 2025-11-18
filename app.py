@@ -293,7 +293,7 @@ with tab_dialogue:
                     st.session_state.current_thread_text = load_thread_by_id(new_file_id)
                     st.session_state.dialogue_input = ""
                     st.success(f"Thread '{title}' created!")
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Failed to create thread: {e}")
 
@@ -370,8 +370,8 @@ with tab_dialogue:
                 st.session_state.current_thread_text = current_text
                 st.session_state.dialogue_input = ""
                 st.success("Message sent and thread saved.")
-                st.experimental_rerun()
-
+                st.rerun()
+    
     with col_clear:
         if st.button("Clear Input"):
             st.session_state.dialogue_input = ""
