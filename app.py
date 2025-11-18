@@ -13,7 +13,7 @@ st.set_page_config(page_title="AI Journaling Assistant", layout="centered")
 # -----------------------------
 # Configuration
 # -----------------------------
-FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Shared Drive folder ID
+FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Replace with your Shared Drive folder ID
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # -----------------------------
@@ -26,7 +26,7 @@ def get_drive_service():
         "https://www.googleapis.com/auth/drive.metadata"
     ]
     SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
-    DELEGATED_EMAIL = "stefan@zeitadvisory.com"  # Workspace email
+    DELEGATED_EMAIL = "stefan@zeitadvisory.com"  # Your Workspace email
 
     creds = service_account.Credentials.from_service_account_info(
         SERVICE_ACCOUNT_INFO,
@@ -40,42 +40,31 @@ def get_drive_service():
 drive_service = get_drive_service()
 
 # -----------------------------
-# JOURNAL HELPERS
+# Journal helpers (unchanged behavior)
 # -----------------------------
 def get_or_create_monthly_file():
-    """Find or create a monthly journal file."""
     now = datetime.now(ZoneInfo("America/New_York"))
     month_file_name = f"Journal_{now.strftime('%Y-%m')}.txt"
 
     query = (
-        f"'{FOLDER_ID}' in parents and name='{month_file_name}' and mimeType='text/plain'"
+        f"'{FOLDER_ID}' in parents and name='{month_file_name}' and mimeType='text/plain' and trashed=false"
     )
-    results = drive_service.files().list(
-        q=query,
-        fields="files(id, name)",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
+    res = drive_service.files().list(
+        q=query, fields="files(id,name)", supportsAllDrives=True, includeItemsFromAllDrives=True
     ).execute()
-
-    files = results.get("files", [])
+    files = res.get("files", [])
     if files:
         return files[0]["id"]
 
-    # Create file if not found
-    file_metadata = {"name": month_file_name, "parents": [FOLDER_ID]}
+    metadata = {"name": month_file_name, "parents": [FOLDER_ID]}
     media = MediaIoBaseUpload(io.BytesIO(b""), mimetype="text/plain")
-    file = drive_service.files().create(
-        body=file_metadata, media_body=media, supportsAllDrives=True
-    ).execute()
+    file = drive_service.files().create(body=metadata, media_body=media, supportsAllDrives=True, fields="id").execute()
     return file["id"]
 
-
 def append_entry_to_monthly_file(entry_text):
-    """Append a journal entry."""
     try:
         file_id = get_or_create_monthly_file()
-
-        # Read current file
+        # read existing
         request = drive_service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
@@ -85,46 +74,27 @@ def append_entry_to_monthly_file(entry_text):
         fh.seek(0)
         existing = fh.read().decode("utf-8")
 
-        # Format entry
         now = datetime.now(ZoneInfo("America/New_York"))
-        new_entry = (
-            f"\n\n---\n🗓️ {now.strftime('%B %d, %Y %I:%M %p EST')}\n"
-            f"{entry_text.strip()}\n"
-        )
-
+        new_entry = f"\n\n---\n🗓️ {now.strftime('%B %d, %Y %I:%M %p EST')}\n{entry_text.strip()}\n"
         updated = existing + new_entry
 
-        # Upload back
-        media = MediaIoBaseUpload(
-            io.BytesIO(updated.encode("utf-8")), mimetype="text/plain"
-        )
-        drive_service.files().update(
-            fileId=file_id, media_body=media, supportsAllDrives=True
-        ).execute()
-
+        media = MediaIoBaseUpload(io.BytesIO(updated.encode("utf-8")), mimetype="text/plain")
+        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         return True, f"✅ Entry saved to {now.strftime('%B %Y')} journal!"
-
     except Exception as e:
         return False, f"⚠️ Failed to save entry: {e}"
 
-
 @st.cache_data(ttl=300)
 def read_all_entries_from_drive():
-    """Fetch all journal files."""
     try:
-        query = f"'{FOLDER_ID}' in parents and mimeType='text/plain'"
+        query = f"'{FOLDER_ID}' in parents and mimeType='text/plain' and trashed=false"
         results = drive_service.files().list(
             q=query,
             fields="files(id, name)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
-
-        files = sorted(
-            [f for f in results.get("files", []) if f["name"].startswith("Journal_")],
-            key=lambda x: x["name"]
-        )
-
+        files = sorted([f for f in results.get("files", []) if f["name"].startswith("Journal_")], key=lambda x: x["name"])
         all_text = ""
         for f in files:
             request = drive_service.files().get_media(fileId=f["id"])
@@ -135,59 +105,56 @@ def read_all_entries_from_drive():
                 _, done = downloader.next_chunk()
             fh.seek(0)
             all_text += fh.read().decode("utf-8") + "\n"
-
         return all_text
     except Exception:
         return ""
 
-
 def ask_ai_about_entries(question):
-    """Answer based on journal history."""
     try:
         entries_text = read_all_entries_from_drive()
         if not entries_text.strip():
             return "No journal entries available yet."
-
         prompt = (
             f"You are an AI journaling assistant. The user has provided these journal entries:\n\n"
-            f"{entries_text}\n\n"
-            f"User question: {question}\n"
-            f"Answer concisely based ONLY on journal content."
+            f"{entries_text}\n\nUser question: {question}\nAnswer concisely based ONLY on journal content."
         )
-
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content
-
     except Exception as e:
         return f"⚠️ Failed to get AI insights: {e}"
 
-
 # -----------------------------
-# DIALOGUE THREAD HELPERS
+# Dialogue helpers (threads stored in same folder as journals)
 # -----------------------------
 def list_threads():
-    """Return all files starting with Thread_."""
+    """Return list of files that start with 'Thread_' in the folder (as dicts)."""
     try:
-        query = f"'{FOLDER_ID}' in parents and name contains 'Thread_'"
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-
-        return sorted(results.get("files", []), key=lambda x: x["name"])
-
+        q = f"'{FOLDER_ID}' in parents and name contains 'Thread_' and trashed=false"
+        res = drive_service.files().list(q=q, fields="files(id,name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+        files = res.get("files", [])
+        # return sorted by name (case-insensitive)
+        return sorted(files, key=lambda x: x["name"].lower())
     except Exception as e:
         st.error(f"⚠️ Failed to list threads: {e}")
         return []
 
+def create_thread_file(title):
+    """Create a Thread_<safe_title>.txt with an initial header and return file id."""
+    safe_title = re.sub(r"[^a-zA-Z0-9_]+", "_", title).strip("_")
+    if not safe_title:
+        safe_title = "unnamed_thread"
+    filename = f"Thread_{safe_title}.txt"
+    initial = f"Thread: {title}\nCreated: {datetime.now(ZoneInfo('America/New_York')).strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    metadata = {"name": filename, "parents": [FOLDER_ID]}
+    media = MediaIoBaseUpload(io.BytesIO(initial.encode("utf-8")), mimetype="text/plain")
+    file = drive_service.files().create(body=metadata, media_body=media, supportsAllDrives=True, fields="id").execute()
+    return file["id"]
 
-def load_thread(file_id):
-    """Read a thread file."""
+def load_thread_by_id(file_id):
+    """Load thread content by file id (returns string)."""
     try:
         request = drive_service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -198,44 +165,26 @@ def load_thread(file_id):
         fh.seek(0)
         return fh.read().decode("utf-8")
     except Exception as e:
-        return f"⚠️ Failed to load thread: {e}"
+        st.error(f"⚠️ Failed to load thread (fileId={file_id}): {e}")
+        return ""
 
-
-def save_thread(file_id, content):
-    """Overwrite thread file."""
+def save_thread_by_id(file_id, content):
+    """Overwrite thread file content by id."""
     try:
-        media = MediaIoBaseUpload(
-            io.BytesIO(content.encode("utf-8")), mimetype="text/plain"
-        )
-        drive_service.files().update(
-            fileId=file_id, media_body=media, supportsAllDrives=True
-        ).execute()
+        media = MediaIoBaseUpload(io.BytesIO(content.encode("utf-8")), mimetype="text/plain")
+        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
     except Exception as e:
-        st.error(f"⚠️ Failed to save thread: {e}")
-
-
-def create_thread_file(title):
-    safe_title = re.sub(r"[^a-zA-Z0-9_]+", "_", title)
-    filename = f"Thread_{safe_title}.txt"
-
-    metadata = {"name": filename, "parents": [FOLDER_ID]}
-    media = MediaIoBaseUpload(io.BytesIO(b""), mimetype="text/plain")
-    file = drive_service.files().create(
-        body=metadata, media_body=media, supportsAllDrives=True
-    ).execute()
-    return file["id"]
-
+        st.error(f"⚠️ Failed to save thread (fileId={file_id}): {e}")
 
 # -----------------------------
-# STREAMLIT UI – TABS
+# UI with tabs: Journal (unchanged) and AI Dialogue
 # -----------------------------
-tab1, tab2 = st.tabs(["📝 Journal", "💬 AI Dialogue"])
+tab_journal, tab_dialogue = st.tabs(["📝 Journal", "💬 AI Dialogue"])
 
-
-# ==========================================================================
-# TAB 1 — JOURNAL
-# ==========================================================================
-with tab1:
+# -----------------------------
+# Tab 1: Journal (kept intact)
+# -----------------------------
+with tab_journal:
     st.title("📝 AI Journaling Assistant")
 
     # ---- Journal Entry Section ----
@@ -252,6 +201,7 @@ with tab1:
     )
     st.session_state.entry_text = entry_input
 
+    # Buttons below the entry box
     col_left, col_spacer, col_right = st.columns([1, 2, 1])
     with col_left:
         if st.button("💾 Save Entry"):
@@ -263,7 +213,6 @@ with tab1:
                     st.error(msg)
             else:
                 st.warning("⚠️ Please write something before saving.")
-
     with col_right:
         if st.button("🧹 Clear Entry"):
             st.session_state.entry_text = ""
@@ -291,12 +240,9 @@ with tab1:
         if st.button("🤖 Get AI Insights"):
             if st.session_state.question_text.strip():
                 with st.spinner("Analyzing your journal entries..."):
-                    st.session_state.ai_answer = ask_ai_about_entries(
-                        st.session_state.question_text
-                    )
+                    st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text)
             else:
                 st.warning("⚠️ Please type a question before asking.")
-
     with col_right:
         if st.button("🧹 Clear Q&A"):
             st.session_state.question_text = ""
@@ -310,18 +256,15 @@ with tab1:
             unsafe_allow_html=True
         )
 
-
-# ==========================================================================
-# TAB 2 — AI DIALOGUE THREADS
-# ==========================================================================
-with tab2:
+# -----------------------------
+# Tab 2: AI Dialogue
+# -----------------------------
+with tab_dialogue:
     st.title("💬 AI Dialogue Threads")
 
-    threads = list_threads()
-    thread_names = ["➕ Start a new thread"] + [t["name"][7:-4] for t in threads]
-
-    selection = st.selectbox("Choose a conversation:", thread_names)
-
+    # initialize session state values used by the dialogue tab
+    if "dialogue_threads" not in st.session_state:
+        st.session_state.dialogue_threads = []  # list of dicts {id,name}
     if "current_thread_id" not in st.session_state:
         st.session_state.current_thread_id = None
     if "current_thread_text" not in st.session_state:
@@ -329,71 +272,121 @@ with tab2:
     if "dialogue_input" not in st.session_state:
         st.session_state.dialogue_input = ""
 
-    # NEW THREAD
+    # refresh thread list
+    threads = list_threads()
+    # build display names for selectbox (strip 'Thread_' prefix and '.txt' suffix)
+    thread_labels = ["➕ Start a new thread"] + [t["name"][7:-4] if t["name"].startswith("Thread_") and t["name"].endswith(".txt") else t["name"] for t in threads]
+
+    selection = st.selectbox("Choose a conversation:", thread_labels)
+
+    # Creating a new thread
     if selection == "➕ Start a new thread":
         title = st.text_input("Name this discussion thread:")
         if st.button("Create Thread"):
             if not title.strip():
                 st.warning("Please enter a thread name.")
             else:
-                file_id = create_thread_file(title)
-                st.session_state.current_thread_id = file_id
-                st.session_state.current_thread_text = ""
-                st.success(f"Thread '{title}' created!")
-                st.rerun()
+                try:
+                    new_file_id = create_thread_file(title)
+                    # store and load
+                    st.session_state.current_thread_id = new_file_id
+                    st.session_state.current_thread_text = load_thread_by_id(new_file_id)
+                    st.session_state.dialogue_input = ""
+                    st.success(f"Thread '{title}' created!")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"Failed to create thread: {e}")
 
-    # EXISTING THREAD
+    # Selecting existing thread
     else:
-        idx = thread_names.index(selection) - 1
-        file_id = threads[idx]["id"]
+        # locate selected index in threads list
+        try:
+            idx = thread_labels.index(selection) - 1
+            file_id = threads[idx]["id"]
+            st.session_state.current_thread_id = file_id
+            # load text content from Drive
+            st.session_state.current_thread_text = load_thread_by_id(file_id)
+        except Exception as e:
+            st.error(f"Failed to load selected thread: {e}")
 
-        st.session_state.current_thread_id = file_id
-        content = load_thread(file_id)
-        st.session_state.current_thread_text = content
+    st.markdown("### Conversation History (editable)")
+    # show conversation history as a text area so user can edit and then Save Thread
+    st.session_state.current_thread_text = st.text_area(
+        "",
+        value=st.session_state.current_thread_text,
+        height=240,
+        placeholder="Conversation history will appear here..."
+    )
 
-        st.markdown("### Conversation History")
-        st.markdown(
-            f"<div style='background-color:#f0f2f6; padding:1rem; height:200px; overflow-y:auto; white-space:pre-wrap; border-radius:10px;'>"
-            f"{content}</div>",
-            unsafe_allow_html=True
-        )
+    st.markdown("---")
 
-        st.markdown("### Your Message")
-        st.session_state.dialogue_input = st.text_area(
-            "",
-            value=st.session_state.dialogue_input,
-            height=120,
-            placeholder="Write your message to the AI..."
-        )
+    # input for sending one message
+    st.markdown("### Send a quick message (this will append & save automatically)")
+    st.session_state.dialogue_input = st.text_area(
+        "",
+        value=st.session_state.dialogue_input,
+        height=120,
+        placeholder="Write your message to the AI..."
+    )
 
+    col_send, col_clear = st.columns([1, 1])
+    with col_send:
         if st.button("Send Message"):
-            if st.session_state.dialogue_input.strip():
+            if not st.session_state.current_thread_id:
+                st.warning("Please create or select a thread first.")
+            elif not st.session_state.dialogue_input.strip():
+                st.warning("Please type a message before sending.")
+            else:
+                file_id = st.session_state.current_thread_id
+                # load latest content just before appending to avoid race conditions
+                current_text = load_thread_by_id(file_id) or ""
+                now_ts = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S")
                 user_msg = st.session_state.dialogue_input.strip()
-                updated = (
-                    st.session_state.current_thread_text
-                    + f"\nUser: {user_msg}\n"
-                )
+                current_text += f"\nUser ({now_ts}): {user_msg}\n"
 
-                # Create prompt using thread + journal entries as context
+                # Build prompt including current thread and journals
                 journal_text = read_all_entries_from_drive()
                 prompt = (
-                    f"You are an AI assistant engaged in an ongoing discussion.\n"
-                    f"Here is the conversation so far:\n\n{updated}\n\n"
-                    f"Here are the user's journal entries for helpful context:\n\n{journal_text}\n\n"
+                    f"You are an AI assistant in a multi-turn conversation.\n\n"
+                    f"Conversation so far:\n{current_text}\n\n"
+                    f"Journal context:\n{journal_text}\n\n"
                     f"Respond to the user's latest message naturally and helpfully."
                 )
 
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                ai_msg = response.choices[0].message.content
+                with st.spinner("AI is generating a reply..."):
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    ai_msg = response.choices[0].message.content
 
-                updated += f"AI: {ai_msg}\n"
+                now_ts2 = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S")
+                current_text += f"AI ({now_ts2}): {ai_msg}\n"
 
-                save_thread(file_id, updated)
+                # Save appended conversation back to Drive
+                save_thread_by_id(file_id, current_text)
 
+                # Update session state so the editable history box shows latest content
+                st.session_state.current_thread_text = current_text
                 st.session_state.dialogue_input = ""
-                st.rerun()
-            else:
-                st.warning("Please enter a message before sending.")
+                st.success("Message sent and thread saved.")
+                st.experimental_rerun()
+
+    with col_clear:
+        if st.button("Clear Input"):
+            st.session_state.dialogue_input = ""
+
+    # -----------------------------
+    # SAVE THREAD button (below conversation history)
+    # -----------------------------
+    st.markdown("---")
+    if st.button("💾 Save Thread"):
+        if not st.session_state.current_thread_id:
+            st.warning("No thread selected to save.")
+        else:
+            try:
+                # overwrite file with content currently in the conversation history text area
+                save_thread_by_id(st.session_state.current_thread_id, st.session_state.current_thread_text)
+                st.success("Thread saved to Google Drive.")
+            except Exception as e:
+                st.error(f"Failed to save thread: {e}")
