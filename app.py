@@ -87,7 +87,11 @@ def append_entry_to_monthly_file(entry_text):
 @st.cache_data(ttl=300)
 def read_all_entries_from_drive():
     try:
-        query = f"'{FOLDER_ID}' in parents and mimeType='text/plain' and trashed=false"
+        # Include both journal files and thread files
+        query = (
+            f"'{FOLDER_ID}' in parents and mimeType='text/plain' "
+            f"and (name contains 'Journal_' or name contains 'Thread_')"
+        )
         results = drive_service.files().list(
             q=query,
             fields="files(id, name)",
