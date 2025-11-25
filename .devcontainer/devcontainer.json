@@ -24,11 +24,5 @@
   },
   "forwardPorts": [
     8501
-  ],
-  "servicePorts": {
-    "8501": {
-      "forwardPort": 8501,
-      "name": "streamlit run app.py --server.enableCORS false --server.enableXsrfProtection false"
-    }
-  }
+  ]
 }
