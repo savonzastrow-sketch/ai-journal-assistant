@@ -7,6 +7,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from google.oauth2 import service_account
 import io
+import os
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="AI Journaling Assistant (Gemini/OpenAI)", layout="centered")
@@ -24,9 +25,17 @@ except Exception as e:
     st.error(f"OpenAI Client Initialization Error: {e}")
 
 try:
-    gemini_client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    # 1. Look for the key in the environment variables (for Codespaces)
+    GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+
+    if not GEMINI_KEY:
+        # 2. If not found, fall back to Streamlit secrets (for Streamlit Cloud deployment)
+        GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
+
+    gemini_client = genai.Client(api_key=GEMINI_KEY)
 except Exception as e:
-    st.error(f"Gemini Client Initialization Error: {e}")
+    # Changed error message to be less confusing since we are using both methods
+    st.error(f"Gemini Client Initialization Error: Could not find or load Gemini API Key.")
 
 # --- Google Drive Service (Delegated Access) ---
 def get_drive_service():
