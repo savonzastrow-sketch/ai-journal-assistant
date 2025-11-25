@@ -27,11 +27,16 @@ except Exception as e:
 # --- REMOVED HARDCODED GEMINI KEY FOR TESTING ---
 
 try:
-    # Use st.secrets exclusively—the standard Streamlit way
-    gemini_client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    # Check Environment Variable first (loaded by devcontainer.json)
+    GEMINI_KEY = os.environ.get("GEMINI_API_KEY") 
+
+    if not GEMINI_KEY:
+        # Fallback to st.secrets for Streamlit Cloud deployment
+        GEMINI_KEY = st.secrets["GEMINI_API_KEY"] 
+
+    gemini_client = genai.Client(api_key=GEMINI_KEY)
 except Exception as e:
-    # The error message is clearer now as it points back to secrets.toml
-    st.error(f"Gemini Client Initialization Error: 'st.secrets has no key \"GEMINI_API_KEY\"'. Check your secrets.toml.")
+    st.error(f"Gemini Client Initialization Error: Could not load Gemini API Key from environment or secrets.")
 
 # --- Google Drive Service (Delegated Access) ---
 def get_drive_service():
