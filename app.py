@@ -25,7 +25,7 @@ except Exception as e:
     st.error(f"OpenAI Client Initialization Error: {e}")
 
 # --- TEMPORARY HARDCODED GEMINI KEY FOR TESTING ---
-GEMINI_KEY_HARDCODED = "AIzaSyC2nKTWkVRA-U2zUAJxUbYTbxMuuej3nnw"
+GEMINI_KEY_HARDCODED = "AIzaSyC2nKTWkVRA-U2zUAJxUbYTbxMuuej3nnwz"
 # <-- REPLACE THIS!
 
 try:
