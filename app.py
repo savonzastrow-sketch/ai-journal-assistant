@@ -24,18 +24,15 @@ try:
 except Exception as e:
     st.error(f"OpenAI Client Initialization Error: {e}")
 
+# --- TEMPORARY HARDCODED GEMINI KEY FOR TESTING ---
+GEMINI_KEY_HARDCODED = "AIzaSyC2nKTWkVRA-U2zUAJxUbYTbxMuuej3nnw
+"  # <-- REPLACE THIS!
+
 try:
-    # 1. Look for the key in the environment variables (for Codespaces)
-    GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-
-    if not GEMINI_KEY:
-        # 2. If not found, fall back to Streamlit secrets (for Streamlit Cloud deployment)
-        GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
-
-    gemini_client = genai.Client(api_key=GEMINI_KEY)
+    # Use the hardcoded key for immediate testing
+    gemini_client = genai.Client(api_key=GEMINI_KEY_HARDCODED)
 except Exception as e:
-    # Changed error message to be less confusing since we are using both methods
-    st.error(f"Gemini Client Initialization Error: Could not find or load Gemini API Key.")
+    st.error(f"Gemini Client Initialization Error: Hardcoded key failed.")
 
 # --- Google Drive Service (Delegated Access) ---
 def get_drive_service():
