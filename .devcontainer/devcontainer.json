@@ -10,12 +10,22 @@
   },
   "updateContentCommand": "pip install -r requirements.txt",
   "postCreateCommand": "sudo apt update && sudo apt install -y python3-pip",
-  
+<<<<<<< HEAD
+ 
+=======
+
+
+>>>>>>> 693e5cb (Fix: Final devcontainer config for Gemini key)
   // 🔑 CRITICAL FIX: Forces Codespace to load GEMINI_API_KEY from GitHub Secrets
   "remoteEnv": {
     "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
   },
-  
+<<<<<<< HEAD
+ 
+=======
+
+
+>>>>>>> 693e5cb (Fix: Final devcontainer config for Gemini key)
   "portsAttributes": {
     "8501": {
       "label": "Streamlit",
@@ -26,3 +36,5 @@
     8501
   ]
 }
+
+
