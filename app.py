@@ -148,14 +148,14 @@ def get_last_30_days_data():
             entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0}
             for j in range(i, i+10): # Look at the next 10 lines
                 if j >= len(lines): break
-                if "- Satisfaction:" in lines[j]:
-                    entry["Satisfaction"] = float(lines[j].split(":")[1].split("/")[0])
-                if "- Neuralgia:" in lines[j]:
-                    entry["Neuralgia"] = float(lines[j].split(":")[1].split("/")[0])
-                if "- Exercise:" in lines[j]:
-                    # Extract '30' from 'Swim (30 mins, 2.0 distance)'
-                    try: entry["Exercise_Mins"] = float(lines[j].split("(")[1].split(" mins")[0])
-                    except: pass
+                    if "- Satisfaction:" in lines[j]:
+                        entry["Satisfaction"] = float(lines[j].split(":")[1].split("/")[0])
+                    if "- Neuralgia:" in lines[j]:
+                        entry["Neuralgia"] = float(lines[j].split(":")[1].split("/")[0])
+                    if "- Exercise:" in lines[j]:
+                        # Extract '30' from 'Swim (30 mins, 2.0 distance)'
+                        try: entry["Exercise_Mins"] = float(lines[j].split("(")[1].split(" mins")[0])
+                        except: pass
             data.append(entry)
 
     df = pd.DataFrame(data)
