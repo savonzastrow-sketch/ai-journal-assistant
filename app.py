@@ -126,6 +126,45 @@ def ask_ai_about_entries(question, model_type="Gemini"):
     except Exception as e:
         return f"⚠️ {model_type} error: {e}"
 
+def get_last_30_days_data():
+    """Parses the last 30 days of structured data from the journal text."""
+    all_text = read_all_entries_from_drive()
+    lines = all_text.split('\n')
+    data = []
+    current_date = None
+    
+    for i, line in enumerate(lines):
+        if "🗓️" in line:
+            try:
+                # This version ignores spaces and "EST" - it just looks for the month/day/year
+                date_str = line.split("🗓️")[1].split("2025")[0].strip() + " 2025"
+                current_date = datetime.strptime(date_str, '%B %d, %Y').date()
+            except: continue
+            
+        if "DAILY TEMPLATE SUMMARY:" in line and current_date:
+            entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0}
+            for j in range(i + 1, i + 10):
+                if j >= len(lines): break
+                curr_line = lines[j]
+                if "- Satisfaction:" in curr_line:
+                    entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
+                elif "- Neuralgia:" in curr_line:
+                    entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
+                elif "- Exercise:" in curr_line:
+                    try: entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
+                    except: pass
+            data.append(entry)
+
+    df = pd.DataFrame(data)
+    if df.empty: return pd.DataFrame()
+    
+    end_date = datetime.now().date()
+    start_date = end_date - pd.Timedelta(days=29)
+    all_days = pd.date_range(start_date, end_date).date
+    
+    df = df.drop_duplicates('Date').set_index('Date').reindex(all_days)
+    return df.reset_index()
+
 # --- STREAMLIT UI ---
 
 st.title("📝 AI Journaling Suite")
@@ -219,15 +258,22 @@ with tab2:
 with tab3:
     st.subheader("Monthly Progress at a Glance")
     
-    # Placeholder for graphical data
-    # (In a production app, we would parse the .txt file for these numbers)
-    st.write("Visualizing last 30 days (Simulated Data based on entries):")
-    
-    chart_data = pd.DataFrame(
-        np.random.randint(0, 5, size=(30, 2)),
-        columns=['Satisfaction', 'Neuralgia']
-    )
-    st.line_chart(chart_data)
+    # Fetch real data
+    df_metrics = get_last_30_days_data()
+
+    if not df_metrics.empty:
+        # Format dates for the bottom of the chart (e.g., Dec 27)
+        df_metrics['Date_Label'] = df_metrics['Date'].apply(lambda x: x.strftime('%b %d') if pd.notnull(x) else "")
+        
+        # 1. Line Chart for Health Ratings
+        st.write("### Satisfaction vs. Neuralgia")
+        st.line_chart(df_metrics.set_index('Date_Label')[['Satisfaction', 'Neuralgia']])
+        
+        # 2. Bar Chart for Exercise Minutes
+        st.write("### Exercise Minutes per Day")
+        st.bar_chart(df_metrics.set_index('Date_Label')['Exercise_Mins'], color="#ffaa00")
+    else:
+        st.info("No template data found yet. Start saving entries in the 'Daily Template' tab to see your progress!")
     
     st.markdown("---")
     st.subheader("Gemini Monthly Synthesis")
