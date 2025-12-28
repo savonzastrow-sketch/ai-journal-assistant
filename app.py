@@ -10,6 +10,7 @@ import io
 import os
 import pandas as pd
 import numpy as np
+import altair as alt
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="AI Journaling Assistant (Gemini/OpenAI)", layout="centered")
@@ -142,7 +143,7 @@ def get_last_30_days_data():
             except: continue
             
         if "DAILY TEMPLATE SUMMARY:" in line and current_date:
-            entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0}
+            entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0, "Exercise_Type": "None"}
             for j in range(i + 1, i + 10):
                 if j >= len(lines): break
                 curr_line = lines[j]
@@ -151,7 +152,10 @@ def get_last_30_days_data():
                 elif "- Neuralgia:" in curr_line:
                     entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
                 elif "- Exercise:" in curr_line:
-                    try: entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
+                    try:
+                        # This captures the type (e.g., Run) and the minutes (e.g., 50)
+                        entry["Exercise_Type"] = curr_line.split(":")[1].split("(")[0].strip()
+                        entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
                     except: pass
             data.append(entry)
 
@@ -270,8 +274,20 @@ with tab3:
         st.line_chart(df_metrics.set_index('Date_Label')[['Satisfaction', 'Neuralgia']])
         
         # 2. Bar Chart for Exercise Minutes
-        st.write("### Exercise Minutes per Day")
-        st.bar_chart(df_metrics.set_index('Date_Label')['Exercise_Mins'], color="#ffaa00")
+        st.subheader("Exercise Minutes per Day")
+        
+        # This creates a bar chart where colors are assigned based on the Exercise_Type
+        exercise_chart = alt.Chart(df_metrics).mark_bar().encode(
+            x=alt.X('Date_Label:N', title='Date', sort=None),
+            y=alt.Y('Exercise_Mins:Q', title='Minutes'),
+            color=alt.Color('Exercise_Type:N', scale=alt.Scale(
+                domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
+                range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
+            ), title="Activity Type"),
+            tooltip=['Date', 'Exercise_Type', 'Exercise_Mins']
+        ).properties(height=400)
+
+        st.altair_chart(exercise_chart, use_container_width=True)
     else:
         st.info("No template data found yet. Start saving entries in the 'Daily Template' tab to see your progress!")
     
