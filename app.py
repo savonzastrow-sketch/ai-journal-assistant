@@ -130,44 +130,38 @@ def get_last_30_days_data():
     """Parses the last 30 days of structured data from the journal text."""
     all_text = read_all_entries_from_drive()
     lines = all_text.split('\n')
-    
     data = []
     current_date = None
     
-    # Simple parsing logic looking for your template headers
     for i, line in enumerate(lines):
         if "🗓️" in line:
-            # Extract date like 'December 27, 2025'
             try:
                 date_str = line.split("🗓️ ")[1].split(" at")[0].strip()
                 current_date = datetime.strptime(date_str, '%B %d, %Y').date()
             except: continue
             
         if "DAILY TEMPLATE SUMMARY:" in line and current_date:
-            # Look ahead for the values in the next few lines
             entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0}
-            for j in range(i, i+10): # Look at the next 10 lines
+            for j in range(i + 1, i + 10):
                 if j >= len(lines): break
-                    if "- Satisfaction:" in lines[j]:
-                        entry["Satisfaction"] = float(lines[j].split(":")[1].split("/")[0])
-                    if "- Neuralgia:" in lines[j]:
-                        entry["Neuralgia"] = float(lines[j].split(":")[1].split("/")[0])
-                    if "- Exercise:" in lines[j]:
-                        # Extract '30' from 'Swim (30 mins, 2.0 distance)'
-                        try: entry["Exercise_Mins"] = float(lines[j].split("(")[1].split(" mins")[0])
-                        except: pass
+                curr_line = lines[j]
+                if "- Satisfaction:" in curr_line:
+                    entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
+                elif "- Neuralgia:" in curr_line:
+                    entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
+                elif "- Exercise:" in curr_line:
+                    try: entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
+                    except: pass
             data.append(entry)
 
     df = pd.DataFrame(data)
     if df.empty: return pd.DataFrame()
     
-    # Ensure the last 30 days are present, even if empty
     end_date = datetime.now().date()
     start_date = end_date - pd.Timedelta(days=29)
     all_days = pd.date_range(start_date, end_date).date
     
     df = df.drop_duplicates('Date').set_index('Date').reindex(all_days)
-    df.index.name = 'Date'
     return df.reset_index()
 
 # --- STREAMLIT UI ---
