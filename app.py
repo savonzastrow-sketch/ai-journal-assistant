@@ -190,12 +190,13 @@ with tab2:
 
     with st.expander("2. Health Tracking", expanded=True):
         t2_neuralgia = st.select_slider("Neuralgia Rating (0=Good, 5=Bad)", options=range(6), value=0)
+        t2_health_notes = st.text_area("Health Notes", placeholder="Describe any specific symptoms or observations...")
 
     with st.expander("3. Exercise Details", expanded=True):
         c1, c2, c3 = st.columns(3)
         t2_ex_type = c1.selectbox("Activity", ["Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"])
         t2_ex_time = c2.number_input("Time (mins)", min_value=0)
-        t2_ex_dist = c3.number_input("Distance", min_value=0.0)
+        t2_ex_dist = c3.number_input("Distance (miles)", min_value=0.0)
 
     t2_insights = st.text_area("Reflections & Insights")
 
@@ -206,6 +207,7 @@ with tab2:
             f"- Summary: {t2_summary}\n"
             f"- Satisfaction: {t2_satisfaction}/5\n"
             f"- Neuralgia: {t2_neuralgia}/5\n"
+            f"- Health Notes: {t2_health_notes}\n"
             f"- Exercise: {t2_ex_type} ({t2_ex_time} mins, {t2_ex_dist} distance)\n"
             f"- Insights: {t2_insights}"
         )
