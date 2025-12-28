@@ -136,7 +136,7 @@ def get_last_30_days_data():
     for i, line in enumerate(lines):
         if "🗓️" in line:
             try:
-                date_str = line.split("🗓️ ")[1].split(" at")[0].strip()
+                date_str = line.split("🗓️")[1].split(" at")[0].strip()
                 current_date = datetime.strptime(date_str, '%B %d, %Y').date()
             except: continue
             
