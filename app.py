@@ -274,7 +274,10 @@ with tab3:
         
         st.subheader("Health & Exercise Trends")
         
-        # 1. The Bar Chart (Exercise - Left Axis)
+        # 1. Clean the data for the chart to remove any rows without ratings
+        chart_data = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia'])
+
+        # 2. The Bar Chart (Exercise - Left Axis)
         bars = alt.Chart(df_metrics).mark_bar(opacity=0.4).encode(
             x=alt.X('Date_Label:N', title='Date', sort=None),
             y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)'),
@@ -282,15 +285,13 @@ with tab3:
                 domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
                 range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
             )),
-            tooltip=['Date', 'Exercise_Type', 'Exercise_Mins']
+            tooltip=['Date:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
         )
 
-        # 2. The Line Chart (Ratings - Right Axis)
-        lines = alt.Chart(df_metrics).transform_fold(
+        # 3. The Line Chart (Ratings - Right Axis)
+        lines = alt.Chart(chart_data).transform_fold(
             ['Satisfaction', 'Neuralgia'],
             as_=['Metric', 'Rating']
-        ).transform_filter(
-            alt.datum.Rating > 0  # This hides the "None" points that break the chart
         ).mark_line(point=True).encode(
             x=alt.X('Date_Label:N', sort=None),
             y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[0, 5])),
@@ -298,7 +299,7 @@ with tab3:
             tooltip=['Date:N', 'Metric:N', 'Rating:Q']
         )
 
-        # 3. Layer them together with independent Y-axes
+        # 4. Layer them together
         combined_chart = alt.layer(bars, lines).resolve_scale(
             y='independent'
         ).properties(height=450)
