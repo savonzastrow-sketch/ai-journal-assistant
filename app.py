@@ -292,16 +292,23 @@ with tab3:
             tooltip=['Date:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
         )
 
-        # 3. Line layer (Ratings)
-        lines = base.transform_fold(
+        # 3. Line layer (Ratings) - Explicitly cleaning and forcing visibility
+        lines = alt.Chart(df_plot).transform_fold(
             ['Satisfaction', 'Neuralgia'],
             as_=['Metric', 'Rating']
+        ).transform_filter(
+            # This line ensures we only try to plot real numbers
+            alt.datum.Rating > 0 
         ).mark_line(point=True, size=3).encode(
+            x=alt.X('Date_Label:N', sort=None),
             y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[0, 5])),
-            color=alt.Color('Metric:N', title="Health Metrics", scale=alt.Scale(range=['#636EFA', '#EF553B'])),
+            color=alt.Color('Metric:N', 
+                title="Health Metrics", 
+                scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
+            ),
             tooltip=['Date:N', 'Metric:N', 'Rating:Q']
         )
-
+        
         # 4. Combine with independent Y-axes
         combined_chart = alt.layer(bars, lines).resolve_scale(
             y='independent'
