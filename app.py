@@ -286,10 +286,11 @@ with tab3:
         )
 
         # 2. The Line Chart (Ratings - Right Axis)
-        # We add ':N' and ':Q' to tell Python exactly what data types these are
         lines = alt.Chart(df_metrics).transform_fold(
             ['Satisfaction', 'Neuralgia'],
             as_=['Metric', 'Rating']
+        ).transform_filter(
+            alt.datum.Rating > 0  # This hides the "None" points that break the chart
         ).mark_line(point=True).encode(
             x=alt.X('Date_Label:N', sort=None),
             y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[0, 5])),
