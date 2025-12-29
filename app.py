@@ -283,6 +283,7 @@ with tab3:
         )
 
         # 2. The Line Chart (Ratings - Right Axis)
+        # We add ':N' and ':Q' to tell Python exactly what data types these are
         lines = alt.Chart(df_metrics).transform_fold(
             ['Satisfaction', 'Neuralgia'],
             as_=['Metric', 'Rating']
@@ -290,7 +291,7 @@ with tab3:
             x=alt.X('Date_Label:N', sort=None),
             y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[0, 5])),
             color=alt.Color('Metric:N', scale=alt.Scale(range=['#636EFA', '#EF553B'])),
-            tooltip=['Date', 'Metric', 'Rating']
+            tooltip=['Date:N', 'Metric:N', 'Rating:Q']
         )
 
         # 3. Layer them together with independent Y-axes
