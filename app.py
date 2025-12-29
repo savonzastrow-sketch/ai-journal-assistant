@@ -274,13 +274,14 @@ with tab3:
         
         st.subheader("Health & Exercise Trends")
         
-        # 1. Clean the data for the chart to remove any rows without ratings
-        chart_data = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia'])
+        # 1. Base chart to share the X-axis (Dates)
+        base = alt.Chart(df_metrics).encode(
+            x=alt.X('Date_Label:N', title='Date', sort=None)
+        )
 
-        # 2. The Bar Chart (Exercise - Left Axis)
-        bars = alt.Chart(df_metrics).mark_bar(opacity=0.4).encode(
-            x=alt.X('Date_Label:N', title='Date', sort=None),
-            y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)'),
+        # 2. Bar layer (Exercise)
+        bars = base.mark_bar(opacity=0.4).encode(
+            y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
             color=alt.Color('Exercise_Type:N', title="Activity", scale=alt.Scale(
                 domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
                 range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
@@ -288,18 +289,17 @@ with tab3:
             tooltip=['Date:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
         )
 
-        # 3. The Line Chart (Ratings - Right Axis)
-        lines = alt.Chart(chart_data).transform_fold(
+        # 3. Line layer (Ratings)
+        lines = base.transform_fold(
             ['Satisfaction', 'Neuralgia'],
             as_=['Metric', 'Rating']
-        ).mark_line(point=True).encode(
-            x=alt.X('Date_Label:N', sort=None),
+        ).mark_line(point=True, size=3).encode(
             y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[0, 5])),
-            color=alt.Color('Metric:N', scale=alt.Scale(range=['#636EFA', '#EF553B'])),
+            color=alt.Color('Metric:N', title="Health Metrics", scale=alt.Scale(range=['#636EFA', '#EF553B'])),
             tooltip=['Date:N', 'Metric:N', 'Rating:Q']
         )
 
-        # 4. Layer them together
+        # 4. Combine with independent Y-axes
         combined_chart = alt.layer(bars, lines).resolve_scale(
             y='independent'
         ).properties(height=450)
