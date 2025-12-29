@@ -144,16 +144,19 @@ def get_last_30_days_data():
             
         if "DAILY TEMPLATE SUMMARY:" in line and current_date:
             entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0, "Exercise_Type": "None"}
-            for j in range(i + 1, i + 10):
+            for j in range(i + 1, i + 20): 
                 if j >= len(lines): break
                 curr_line = lines[j]
+                
+                # This ensures we stop looking if we hit the next day's entry
+                if "🗓️" in curr_line: break 
+
                 if "- Satisfaction:" in curr_line:
                     entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
                 elif "- Neuralgia:" in curr_line:
                     entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
                 elif "- Exercise:" in curr_line:
                     try:
-                        # This captures the type (e.g., Run) and the minutes (e.g., 50)
                         entry["Exercise_Type"] = curr_line.split(":")[1].split("(")[0].strip()
                         entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
                     except: pass
