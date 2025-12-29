@@ -269,25 +269,36 @@ with tab3:
         # Format dates for the bottom of the chart (e.g., Dec 27)
         df_metrics['Date_Label'] = df_metrics['Date'].apply(lambda x: x.strftime('%b %d') if pd.notnull(x) else "")
         
-        # 1. Line Chart for Health Ratings
-        st.write("### Satisfaction vs. Neuralgia")
-        st.line_chart(df_metrics.set_index('Date_Label')[['Satisfaction', 'Neuralgia']])
+        st.subheader("Health & Exercise Trends")
         
-        # 2. Bar Chart for Exercise Minutes
-        st.subheader("Exercise Minutes per Day")
-        
-        # This creates a bar chart where colors are assigned based on the Exercise_Type
-        exercise_chart = alt.Chart(df_metrics).mark_bar().encode(
+        # 1. The Bar Chart (Exercise - Left Axis)
+        bars = alt.Chart(df_metrics).mark_bar(opacity=0.4).encode(
             x=alt.X('Date_Label:N', title='Date', sort=None),
-            y=alt.Y('Exercise_Mins:Q', title='Minutes'),
-            color=alt.Color('Exercise_Type:N', scale=alt.Scale(
+            y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)'),
+            color=alt.Color('Exercise_Type:N', title="Activity", scale=alt.Scale(
                 domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
                 range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
-            ), title="Activity Type"),
+            )),
             tooltip=['Date', 'Exercise_Type', 'Exercise_Mins']
-        ).properties(height=400)
+        )
 
-        st.altair_chart(exercise_chart, use_container_width=True)
+        # 2. The Line Chart (Ratings - Right Axis)
+        lines = alt.Chart(df_metrics).transform_fold(
+            ['Satisfaction', 'Neuralgia'],
+            as_=['Metric', 'Rating']
+        ).mark_line(point=True).encode(
+            x=alt.X('Date_Label:N', sort=None),
+            y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[0, 5])),
+            color=alt.Color('Metric:N', scale=alt.Scale(range=['#636EFA', '#EF553B'])),
+            tooltip=['Date', 'Metric', 'Rating']
+        )
+
+        # 3. Layer them together with independent Y-axes
+        combined_chart = alt.layer(bars, lines).resolve_scale(
+            y='independent'
+        ).properties(height=450)
+
+        st.altair_chart(combined_chart, use_container_width=True)
     else:
         st.info("No template data found yet. Start saving entries in the 'Daily Template' tab to see your progress!")
     
