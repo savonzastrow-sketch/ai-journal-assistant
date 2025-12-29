@@ -268,14 +268,17 @@ with tab3:
     # Fetch real data
     df_metrics = get_last_30_days_data()
 
+    # This removes days that don't have exercise or ratings logged
+    df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia', 'Exercise_Mins'])
+    
     if not df_metrics.empty:
         # Format dates for the bottom of the chart (e.g., Dec 27)
-        df_metrics['Date_Label'] = df_metrics['Date'].apply(lambda x: x.strftime('%b %d') if pd.notnull(x) else "")
+        df_plot['Date_Label'] = df_plot['Date'].apply(lambda x: x.strftime('%b %d') if pd.notnull(x) else "")
         
         st.subheader("Health & Exercise Trends")
         
         # 1. Base chart to share the X-axis (Dates)
-        base = alt.Chart(df_metrics).encode(
+        base = alt.Chart(df_plot).encode(
             x=alt.X('Date_Label:N', title='Date', sort=None)
         )
 
