@@ -232,10 +232,10 @@ with tab2:
     
     with st.expander("1. Summary & Satisfaction", expanded=True):
         t2_summary = st.text_area("What happened today?", placeholder="A quick summary...")
-        t2_satisfaction = st.select_slider("Overall Satisfaction (0=Tough, 5=Great)", options=range(5), value=3)
+        t2_satisfaction = st.select_slider("Overall Satisfaction (1=Tough, 5=Great)", options=range(1, 6), value=3)
 
     with st.expander("2. Health Tracking", expanded=True):
-        t2_neuralgia = st.select_slider("Neuralgia Rating (0=Good, 5=Bad)", options=range(5), value=1)
+        t2_neuralgia = st.select_slider("Neuralgia Rating (1=Good, 5=Bad)", options=range(1, 6), value=1)
         t2_health_notes = st.text_area("Health Notes", placeholder="Describe any specific symptoms or observations...")
 
     with st.expander("3. Exercise Details", expanded=True):
@@ -301,7 +301,7 @@ with tab3:
             alt.datum.Rating > 0 
         ).mark_line(point=True, size=3).encode(
             x=alt.X('Date_Label:N', sort=None),
-            y=alt.Y('Rating:Q', title='Rating (0-5)', scale=alt.Scale(domain=[1, 5])),
+            y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
             color=alt.Color('Metric:N', 
                 title="Health Metrics", 
                 scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
