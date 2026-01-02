@@ -276,7 +276,7 @@ with tab3:
     
     if not df_metrics.empty:
         # Format dates for the bottom of the chart (e.g., Dec 27)
-        df_plot = df_plot.sort_values('Date')
+        df_plot = df_plot.sort_values('Date').reset_index(drop=True)
         
         st.subheader("Health & Exercise Trends")
         
