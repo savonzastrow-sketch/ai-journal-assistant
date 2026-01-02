@@ -282,7 +282,7 @@ with tab3:
         
         # 1. Base chart to share the X-axis (Dates)
         base = alt.Chart(df_plot).encode(
-            x=alt.X('yearmonthdate(Date):T', title='Date', axis=alt.Axis(format='%b %d')),
+            x=alt.X('yearmonthdate(Date):T', title='Date', axis=alt.Axis(format='%b %d'), bandPosition=0.5),
         )
 
         # 2. Bar layer (Exercise)
