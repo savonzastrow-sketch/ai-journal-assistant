@@ -8,19 +8,18 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from google.oauth2 import service_account
 import io
 import os
-
+import pandas as pd
+import numpy as np
+import altair as alt
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="AI Journaling Assistant (Gemini/OpenAI)", layout="centered")
 
-
 # --- Configuration & Initialization ---
-
 
 # NOTE: REPLACE THE BELOW VALUES WITH YOUR ACTUAL FOLDER ID AND WORKSPACE EMAIL
 FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Replace with your Shared Drive folder ID
 DELEGATED_EMAIL = "stefan@zeitadvisory.com"  # Your Workspace email (for Drive Service)
-
 
 # Initialize API Clients using st.secrets
 try:
@@ -28,136 +27,74 @@ try:
 except Exception as e:
     st.error(f"OpenAI Client Initialization Error: {e}")
 
-
-# ----------------------------------------------------------------------------------
-# 🔑 Initialize Gemini Client (Using Environment Variable from Codespace or st.secrets)
-# ----------------------------------------------------------------------------------
 try:
-    # 1. Look for the key in the environment variables (loaded by devcontainer.json in Codespaces)
-    GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-
-
-    if not GEMINI_KEY:
-        # 2. If not found, fall back to st.secrets (for Streamlit Cloud deployment)
-        GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
-
-
+    GEMINI_KEY = os.environ.get("GEMINI_API_KEY") or st.secrets["GEMINI_API_KEY"]
     gemini_client = genai.Client(api_key=GEMINI_KEY)
 except Exception as e:
-    st.error(f"Gemini Client Initialization Error: Could not load Gemini API Key from environment or secrets. Details: {e}")
+    st.error(f"Gemini Client Initialization Error: {e}")
+
 # --- Google Drive Service (Delegated Access) ---
 def get_drive_service():
-    """Authenticates and returns the Google Drive service object."""
     SCOPES = [
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/drive.file",
         "https://www.googleapis.com/auth/drive.metadata"
     ]
     SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
-   
-    creds = service_account.Credentials.from_service_account_info(
-        SERVICE_ACCOUNT_INFO,
-        scopes=SCOPES
-    )
+    creds = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPES)
     delegated_creds = creds.with_subject(DELEGATED_EMAIL)
-    service = build("drive", "v3", credentials=delegated_creds)
-    return service
-
+    return build("drive", "v3", credentials=delegated_creds)
 
 try:
     drive_service = get_drive_service()
 except Exception as e:
     st.error(f"Google Drive Service Initialization Error: {e}")
-    # st.stop() # Removed st.stop() to allow app to run if Drive fails but AI works
 
-
-# -----------------------------
-# Helper functions (Drive Operations)
-# -----------------------------
-
+# --- Drive Helper Functions ---
 
 def get_or_create_monthly_file():
-    """Find or create a monthly journal file (e.g., Journal_YYYY-MM.txt)."""
     now = datetime.now(ZoneInfo("America/New_York"))
     month_file_name = f"Journal_{now.strftime('%Y-%m')}.txt"
-   
     query = f"'{FOLDER_ID}' in parents and name='{month_file_name}' and mimeType='text/plain'"
-    results = drive_service.files().list(
-        q=query,
-        fields="files(id, name)",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
-   
+    results = drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
     files = results.get("files", [])
-   
+    
     if files:
         return files[0]["id"]
     else:
         file_metadata = {"name": month_file_name, "parents": [FOLDER_ID]}
         media = MediaIoBaseUpload(io.BytesIO(b""), mimetype="text/plain")
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            supportsAllDrives=True
-        ).execute()
+        file = drive_service.files().create(body=file_metadata, media_body=media, supportsAllDrives=True).execute()
         return file["id"]
 
-
 def append_entry_to_monthly_file(entry_text):
-    """Append a new journal entry to the current month's file."""
     try:
         file_id = get_or_create_monthly_file()
-       
-        # 1. Download existing content
         request = drive_service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
             status, done = downloader.next_chunk()
-       
         fh.seek(0)
         existing_content = fh.read().decode("utf-8")
-       
-        # 2. Prepare new entry
+        
         now = datetime.now(ZoneInfo("America/New_York"))
         new_entry = f"\n\n---\n🗓️ {now.strftime('%B %d, %Y %I:%M %p EST')}\n{entry_text.strip()}\n"
         updated_content = existing_content + new_entry
-       
-        # 3. Upload updated content
+        
         media = MediaIoBaseUpload(io.BytesIO(updated_content.encode("utf-8")), mimetype="text/plain")
-        drive_service.files().update(
-            fileId=file_id,
-            media_body=media,
-            supportsAllDrives=True
-        ).execute()
-       
-        # Reset entry field on success
-        if "entry_text" in st.session_state:
-            st.session_state.entry_text = ""
-            st.rerun()
-
-
+        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
         return True, f"✅ Entry saved to {now.strftime('%B %Y')} journal!"
     except Exception as e:
-        return False, f"⚠️ Failed to save entry: {e}"
-
+        return False, f"⚠️ Failed to save: {e}"
 
 @st.cache_data(ttl=300)
 def read_all_entries_from_drive():
-    """Read all monthly journal files."""
     try:
         query = f"'{FOLDER_ID}' in parents and mimeType='text/plain'"
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-       
+        results = drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = sorted(results.get("files", []), key=lambda x: x["name"])
-       
         all_text = ""
         for f in files:
             request = drive_service.files().get_media(fileId=f["id"])
@@ -166,173 +103,225 @@ def read_all_entries_from_drive():
             done = False
             while not done:
                 status, done = downloader.next_chunk()
-           
             fh.seek(0)
             all_text += fh.read().decode("utf-8") + "\n"
-       
         return all_text
     except Exception as e:
-        st.error(f"⚠️ Failed to read entries: {e}")
+        st.error(f"⚠️ Read error: {e}")
         return ""
 
+# --- AI Helper Functions ---
 
-# --- Helper functions (AI Operations) ---
-
-
-def ask_openai_about_entries(question):
-    """Generates an AI response using the OpenAI API."""
+def ask_ai_about_entries(question, model_type="Gemini"):
+    entries_text = read_all_entries_from_drive()
+    if not entries_text.strip(): return "No journal entries available."
+    prompt = f"You are an AI journaling assistant. Based on these entries:\n\n{entries_text}\n\nQuestion: {question}\nAnswer concisely."
+    
     try:
-        entries_text = read_all_entries_from_drive()
-       
-        if not entries_text.strip():
-            return "No journal entries available yet."
-
-
-        prompt = (
-            f"You are an AI journaling assistant. The user has provided the following journal entries:\n\n"
-            f"{entries_text}\n\nQuestion: {question}\nAnswer concisely based on the entries."
-        )
-
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content
+        if model_type == "Gemini":
+            response = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=[prompt])
+            return response.text
+        else:
+            response = openai_client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": prompt}])
+            return response.choices[0].message.content
     except Exception as e:
-        return f"⚠️ Failed to get OpenAI insights: {e}"
+        return f"⚠️ {model_type} error: {e}"
 
+def get_last_30_days_data():
+    """Parses the last 30 days of structured data from the journal text."""
+    all_text = read_all_entries_from_drive()
+    lines = all_text.split('\n')
+    data = []
+    current_date = None
+    
+    for i, line in enumerate(lines):
+        if "🗓️" in line:
+            try:
+                # This version ignores spaces and "EST" - it just looks for the month/day/year
+                date_str = line.split("🗓️")[1].split("2025")[0].strip() + " 2025"
+                current_date = datetime.strptime(date_str, '%B %d, %Y').date()
+            except: continue
+            
+        if "DAILY TEMPLATE SUMMARY:" in line and current_date:
+            entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0, "Exercise_Type": "None"}
+            for j in range(i + 1, i + 20): 
+                if j >= len(lines): break
+                curr_line = lines[j]
+                
+                # This ensures we stop looking if we hit the next day's entry
+                if "🗓️" in curr_line: break 
 
-def ask_gemini_about_entries(question):
-    """Generates an AI response using the Gemini API."""
-    try:
-        entries_text = read_all_entries_from_drive()
-       
-        if not entries_text.strip():
-            return "No journal entries available yet."
+                if "- Satisfaction:" in curr_line:
+                    entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
+                elif "- Neuralgia:" in curr_line:
+                    entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
+                elif "- Exercise:" in curr_line:
+                    try:
+                        entry["Exercise_Type"] = curr_line.split(":")[1].split("(")[0].strip()
+                        entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
+                    except: pass
+            data.append(entry)
 
+    df = pd.DataFrame(data)
+    if df.empty: return pd.DataFrame()
+    
+    end_date = datetime.now().date()
+    start_date = end_date - pd.Timedelta(days=29)
+    all_days = pd.date_range(start_date, end_date).date
+    
+    df = df.drop_duplicates('Date').set_index('Date').reindex(all_days)
+    return df.reset_index()
 
-        prompt = (
-            f"You are an AI journaling assistant. The user has provided the following journal entries:\n\n"
-            f"{entries_text}\n\nQuestion: {question}\nAnswer concisely based on the entries."
-        )
+# --- STREAMLIT UI ---
 
+st.title("📝 AI Journaling Suite")
 
-        response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[prompt]
-        )
-        return response.text
-    except Exception as e:
-        return f"⚠️ Failed to get Gemini insights: {e}"
-
-
-# -----------------------------
-# Streamlit UI
-# -----------------------------
-
-
-st.title("📝 AI Journaling Assistant (Gemini/OpenAI)")
-
-
-# Initialize session state keys
+# Initialize session state
 if "entry_text" not in st.session_state: st.session_state.entry_text = ""
 if "question_text" not in st.session_state: st.session_state.question_text = ""
 if "ai_answer" not in st.session_state: st.session_state.ai_answer = ""
 if "model_used" not in st.session_state: st.session_state.model_used = ""
 
+# 1. CREATE TABS
+tab1, tab2, tab3 = st.tabs(["🤖 AI Assistant", "📋 Daily Template", "📊 30-Day Recap"])
 
+# --- TAB 1: ORIGINAL AI ASSISTANT ---
+with tab1:
+    st.subheader("Free-form Journal Entry")
+    entry_input = st.text_area("", value=st.session_state.entry_text, height=200, key='entry_area', placeholder="Write freely here...")
+    st.session_state.entry_text = entry_input
 
+    col_l, col_s, col_r = st.columns([1, 2, 1])
+    with col_l:
+        if st.button("💾 Save Entry", use_container_width=True):
+            if st.session_state.entry_text.strip():
+                success, msg = append_entry_to_monthly_file(st.session_state.entry_text)
+                if success: st.success(msg)
+                else: st.error(msg)
+            else: st.warning("⚠️ Write something first.")
+    with col_r:
+        if st.button("🧹 Clear", use_container_width=True):
+            st.session_state.entry_text = ""
+            st.rerun()
 
-# --- Journal Entry Section ---
-st.subheader("Write your journal entry")
+    st.markdown("---")
+    st.subheader("Ask your Journal")
+    st.session_state.question_text = st.text_area("", value=st.session_state.question_text, height=100, key='q_area', placeholder="Ask about your past entries...")
 
+    cg, co, cc = st.columns(3)
+    with cg:
+        if st.button("✨ Gemini", use_container_width=True):
+            st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text, "Gemini")
+            st.session_state.model_used = "Gemini"
+    with co:
+        if st.button("🤖 OpenAI", use_container_width=True):
+            st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text, "OpenAI")
+            st.session_state.model_used = "OpenAI"
+    with cc:
+        if st.button("🧹 Clear Q&A", use_container_width=True):
+            st.session_state.question_text, st.session_state.ai_answer, st.session_state.model_used = "", "", ""
+            st.rerun()
 
-entry_input = st.text_area(
-    "",
-    value=st.session_state.entry_text,
-    height=250,
-    key='entry_input_area',
-    placeholder="Start typing your journal entry here..."
-)
-st.session_state.entry_text = entry_input
+    if st.session_state.ai_answer:
+        st.markdown(f"### 💡 {st.session_state.model_used} Response:")
+        st.info(st.session_state.ai_answer)
 
+# --- TAB 2: STRUCTURED DAILY TEMPLATE ---
+with tab2:
+    st.subheader("Daily Tracking Template")
+    
+    with st.expander("1. Summary & Satisfaction", expanded=True):
+        t2_summary = st.text_area("What happened today?", placeholder="A quick summary...")
+        t2_satisfaction = st.select_slider("Overall Satisfaction (1=Tough, 5=Great)", options=range(1, 6), value=3)
 
-# Buttons below the entry box
-col_left, col_spacer, col_right = st.columns([1, 2, 1])
+    with st.expander("2. Health Tracking", expanded=True):
+        t2_neuralgia = st.select_slider("Neuralgia Rating (1=Good, 5=Bad)", options=range(1, 6), value=1)
+        t2_health_notes = st.text_area("Health Notes", placeholder="Describe any specific symptoms or observations...")
 
+    with st.expander("3. Exercise Details", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        t2_ex_type = c1.selectbox("Activity", ["Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"])
+        t2_ex_time = c2.number_input("Time (mins)", min_value=0)
+        t2_ex_dist = c3.number_input("Distance (miles)", min_value=0.0)
 
-with col_left:
-    if st.button("💾 Save Entry", use_container_width=True):
-        if st.session_state.entry_text.strip():
-            success, msg = append_entry_to_monthly_file(st.session_state.entry_text)
-            if success:
-                st.success(msg)
-            else:
-                st.error(msg)
-        else:
-            st.warning("⚠️ Please write something before saving.")
+    t2_insights = st.text_area("Reflections & Insights")
 
+    if st.button("💾 Submit Template to Drive", use_container_width=True):
+        # Format the structured data for the text file
+        formatted_template = (
+            f"DAILY TEMPLATE SUMMARY:\n"
+            f"- Summary: {t2_summary}\n"
+            f"- Satisfaction: {t2_satisfaction}/5\n"
+            f"- Neuralgia: {t2_neuralgia}/5\n"
+            f"- Health Notes: {t2_health_notes}\n"
+            f"- Exercise: {t2_ex_type} ({t2_ex_time} mins, {t2_ex_dist} distance)\n"
+            f"- Insights: {t2_insights}"
+        )
+        success, msg = append_entry_to_monthly_file(formatted_template)
+        if success: st.success(msg)
+        else: st.error(msg)
 
-with col_right:
-    if st.button("🧹 Clear Entry", use_container_width=True):
-        st.session_state.entry_text = ""
-        st.rerun()
+# --- TAB 3: 30-DAY RECAP & GRAPHICS ---
+with tab3:
+    st.subheader("Monthly Progress at a Glance")
+    
+    # Fetch real data
+    df_metrics = get_last_30_days_data()
 
+    # This removes days that don't have exercise or ratings logged
+    df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia', 'Exercise_Mins'])
+    
+    if not df_metrics.empty:
+        # Format dates for the bottom of the chart (e.g., Dec 27)
+        df_plot['Date_Label'] = df_plot['Date'].apply(lambda x: x.strftime('%b %d') if pd.notnull(x) else "")
+        
+        st.subheader("Health & Exercise Trends")
+        
+        # 1. Base chart to share the X-axis (Dates)
+        base = alt.Chart(df_plot).encode(
+            x=alt.X('Date_Label:N', title='Date', sort=None)
+        )
 
-st.markdown("---")
+        # 2. Bar layer (Exercise)
+        bars = base.mark_bar(opacity=0.4).encode(
+            y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
+            color=alt.Color('Exercise_Type:N', title="Activity", scale=alt.Scale(
+                domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
+                range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
+            )),
+            tooltip=['Date:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
+        )
 
+        # 3. Line layer (Ratings) - Explicitly cleaning and forcing visibility
+        lines = alt.Chart(df_plot).transform_fold(
+            ['Satisfaction', 'Neuralgia'],
+            as_=['Metric', 'Rating']
+        ).transform_filter(
+            # This line ensures we only try to plot real numbers
+            alt.datum.Rating > 0 
+        ).mark_line(point=True, size=3).encode(
+            x=alt.X('Date_Label:N', sort=None),
+            y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
+            color=alt.Color('Metric:N', 
+                title="Health Metrics", 
+                scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
+            ),
+            tooltip=['Date:N', 'Metric:N', 'Rating:Q']
+        )
+        
+        # 4. Combine with independent Y-axes
+        combined_chart = alt.layer(bars, lines).resolve_scale(
+            y='independent'
+        ).properties(height=450)
 
-# --- AI Query Section ---
-st.subheader("AI Journal Query")
-
-
-st.session_state.question_text = st.text_area(
-    "",
-    value=st.session_state.question_text,
-    height=150,
-    key='question_input_area',
-    placeholder="Type your question here (e.g., 'What were my main themes last month?')..."
-)
-
-
-# Buttons below AI section: Gemini, OpenAI, Clear
-col_g, col_o, col_c = st.columns([1, 1, 1])
-
-
-with col_g:
-    if st.button("✨ Get Gemini Insights", use_container_width=True):
-        if st.session_state.question_text.strip():
-            with st.spinner("Analyzing entries with Gemini..."):
-                st.session_state.ai_answer = ask_gemini_about_entries(st.session_state.question_text)
-                st.session_state.model_used = "Gemini"
-        else:
-            st.warning("⚠️ Please type a question before asking.")
-
-
-with col_o:
-    if st.button("🤖 Get OpenAI Insights", use_container_width=True):
-        if st.session_state.question_text.strip():
-            with st.spinner("Analyzing entries with OpenAI..."):
-                st.session_state.ai_answer = ask_openai_about_entries(st.session_state.question_text)
-                st.session_state.model_used = "OpenAI"
-        else:
-            st.warning("⚠️ Please type a question before asking.")
-
-
-with col_c:
-    if st.button("🧹 Clear Q&A", use_container_width=True):
-        st.session_state.question_text = ""
-        st.session_state.ai_answer = ""
-        st.session_state.model_used = ""
-        st.rerun()
-
-
-# Display AI answer
-if st.session_state.ai_answer:
-    st.markdown(f"### 💡 AI Response ({st.session_state.model_used}):")
-    st.markdown(
-        f"<div style='background-color:#f0f2f6; padding:1rem; border-radius:10px;'>{st.session_state.ai_answer}</div>",
-        unsafe_allow_html=True
-    )
-
+        st.altair_chart(combined_chart, use_container_width=True)
+    else:
+        st.info("No template data found yet. Start saving entries in the 'Daily Template' tab to see your progress!")
+    
+    st.markdown("---")
+    st.subheader("Gemini Monthly Synthesis")
+    if st.button("🧠 Generate AI Monthly Report", use_container_width=True):
+        with st.spinner("Analyzing patterns in your health and mood..."):
+            synthesis_q = "Look at my entries for the last 30 days. Specifically summarize my neuralgia levels vs my activity types and suggest any patterns you see."
+            report = ask_ai_about_entries(synthesis_q, "Gemini")
+            st.markdown(report)
