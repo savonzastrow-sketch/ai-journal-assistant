@@ -290,7 +290,7 @@ with tab3:
         )
 
         # 2. Bar layer (Exercise)
-        bars = base.mark_bar(opacity=0.4, xOffset=-15).encode(
+        bars = base.mark_bar(opacity=0.4, xOffset=-25).encode(
             y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
             color=alt.Color('Exercise_Type:N', title="Activity", scale=alt.Scale(
                 domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
