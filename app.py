@@ -282,7 +282,11 @@ with tab3:
         
         # 1. Base chart to share the X-axis (Dates)
         base = alt.Chart(df_plot).encode(
-            x=alt.X('yearmonthdate(Date):T', title='Date', axis=alt.Axis(format='%b %d'), bandPosition=0.5),
+            x=alt.X('yearmonthdate(Date):T', 
+                title='Date', 
+                axis=alt.Axis(format='%b %d'), 
+                scale=alt.Scale(nice=False)  # This prevents the chart from adding extra days
+                ),
         )
 
         # 2. Bar layer (Exercise)
@@ -303,7 +307,10 @@ with tab3:
             # This line ensures we only try to plot real numbers
             alt.datum.Rating > 0 
         ).mark_line(point=True, size=3).encode(
-            x=alt.X('yearmonthdate(Date):T', axis=alt.Axis(format='%b %d')),
+            x=alt.X('yearmonthdate(Date):T', 
+                axis=alt.Axis(format='%b %d'), 
+                scale=alt.Scale(nice=False)
+            ),
             y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
             color=alt.Color('Metric:N', 
                 title="Health Metrics", 
