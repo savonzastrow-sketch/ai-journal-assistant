@@ -137,10 +137,13 @@ def get_last_30_days_data():
     for i, line in enumerate(lines):
         if "🗓️" in line:
             try:
-                # This version ignores spaces and "EST" - it just looks for the month/day/year
-                date_str = line.split("🗓️")[1].split("2025")[0].strip() + " 2025"
-                current_date = datetime.strptime(date_str, '%B %d, %Y').date()
-            except: continue
+                # Extracts the date part and removes the time/EST suffix
+                date_part = line.split("🗓️")[1].strip()
+                # Takes the first three words (Month Day, Year) and removes the comma
+                date_clean = " ".join(date_part.split()[:3]).replace(",", "")
+                current_date = datetime.strptime(date_clean, '%B %d %Y').date()
+            except:
+                continue
             
         if "DAILY TEMPLATE SUMMARY:" in line and current_date:
             entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0, "Exercise_Type": "None"}
@@ -273,23 +276,27 @@ with tab3:
     
     if not df_metrics.empty:
         # Format dates for the bottom of the chart (e.g., Dec 27)
-        df_plot['Date_Label'] = df_plot['Date'].apply(lambda x: x.strftime('%b %d') if pd.notnull(x) else "")
+        df_plot = df_plot.sort_values('Date').reset_index(drop=True)
         
         st.subheader("Health & Exercise Trends")
         
         # 1. Base chart to share the X-axis (Dates)
         base = alt.Chart(df_plot).encode(
-            x=alt.X('Date_Label:N', title='Date', sort=None)
+            x=alt.X('yearmonthdate(Date):T', 
+                title='Date', 
+                axis=alt.Axis(format='%b %d'), 
+                scale=alt.Scale(nice=False)  # This prevents the chart from adding extra days
+                ),
         )
 
         # 2. Bar layer (Exercise)
-        bars = base.mark_bar(opacity=0.4).encode(
+        bars = base.mark_bar(opacity=0.4, xOffset=-25).encode(
             y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
             color=alt.Color('Exercise_Type:N', title="Activity", scale=alt.Scale(
                 domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
                 range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
             )),
-            tooltip=['Date:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
+            tooltip=['Date_Label:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
         )
 
         # 3. Line layer (Ratings) - Explicitly cleaning and forcing visibility
@@ -300,13 +307,16 @@ with tab3:
             # This line ensures we only try to plot real numbers
             alt.datum.Rating > 0 
         ).mark_line(point=True, size=3).encode(
-            x=alt.X('Date_Label:N', sort=None),
+            x=alt.X('yearmonthdate(Date):T', 
+                axis=alt.Axis(format='%b %d'), 
+                scale=alt.Scale(nice=False)
+            ),
             y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
             color=alt.Color('Metric:N', 
                 title="Health Metrics", 
                 scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
             ),
-            tooltip=['Date:N', 'Metric:N', 'Rating:Q']
+            tooltip=['Date_Label:N', 'Metric:N', 'Rating:Q']
         )
         
         # 4. Combine with independent Y-axes
