@@ -158,13 +158,35 @@ def get_last_30_days_data():
                     entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
                 elif "- Neuralgia:" in curr_line:
                     entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
-                elif "- Exercise:" in curr_line:
+                elif "- Exercise 1:" in curr_line:
                     try:
-                        entry["Exercise_Type"] = curr_line.split(":")[1].split("(")[0].strip()
-                        entry["Exercise_Mins"] = float(curr_line.split("(")[1].split(" mins")[0])
+                        # Parse first exercise
+                        ex1_type = curr_line.split(":")[1].split("(")[0].strip()
+                        ex1_mins = float(curr_line.split("(")[1].split(" mins")[0])
+                        if ex1_mins > 0:
+                            data.append({
+                                "Date": current_date, 
+                                "Satisfaction": entry["Satisfaction"], 
+                                "Neuralgia": entry["Neuralgia"],
+                                "Exercise_Type": ex1_type, 
+                                "Exercise_Mins": ex1_mins
+                            })
                     except: pass
-            data.append(entry)
-
+                elif "- Exercise 2:" in curr_line:
+                    try:
+                        # Parse second exercise
+                        ex2_type = curr_line.split(":")[1].split("(")[0].strip()
+                        ex2_mins = float(curr_line.split("(")[1].split(" mins")[0])
+                        if ex2_mins > 0:
+                            data.append({
+                                "Date": current_date, 
+                                "Satisfaction": entry["Satisfaction"], 
+                                "Neuralgia": entry["Neuralgia"],
+                                "Exercise_Type": ex2_type, 
+                                "Exercise_Mins": ex2_mins
+                            })
+                    except: pass
+            
     df = pd.DataFrame(data)
     if df.empty: return pd.DataFrame()
     
@@ -242,10 +264,19 @@ with tab2:
         t2_health_notes = st.text_area("Health Notes", placeholder="Describe any specific symptoms or observations...")
 
     with st.expander("3. Exercise Details", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        t2_ex_type = c1.selectbox("Activity", ["Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"])
-        t2_ex_time = c2.number_input("Time (mins)", min_value=0)
-        t2_ex_dist = c3.number_input("Distance (miles)", min_value=0.0)
+            # Exercise 1
+            st.markdown("**Exercise 1**")
+            c1, c2, c3 = st.columns(3)
+            t2_ex_type1 = c1.selectbox("Activity 1", ["None", "Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"], key="ex1_act")
+            t2_ex_time1 = c2.number_input("Time 1 (mins)", min_value=0, key="ex1_time")
+            t2_ex_dist1 = c3.number_input("Distance 1 (miles)", min_value=0.0, step=0.1, key="ex1_dist")
+            
+            # Exercise 2
+            st.markdown("**Exercise 2**")
+            c4, c5, c6 = st.columns(3)
+            t2_ex_type2 = c4.selectbox("Activity 2", ["None", "Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"], key="ex2_act")
+            t2_ex_time2 = c5.number_input("Time 2 (mins)", min_value=0, key="ex2_time")
+            t2_ex_dist2 = c6.number_input("Distance 2 (miles)", min_value=0.0, step=0.1, key="ex2_dist")
 
     t2_insights = st.text_area("Reflections & Insights")
 
@@ -257,7 +288,8 @@ with tab2:
             f"- Satisfaction: {t2_satisfaction}/5\n"
             f"- Neuralgia: {t2_neuralgia}/5\n"
             f"- Health Notes: {t2_health_notes}\n"
-            f"- Exercise: {t2_ex_type} ({t2_ex_time} mins, {t2_ex_dist} distance)\n"
+            f"- Exercise 1: {t2_ex_type1} ({t2_ex_time1} mins, {t2_ex_dist1} miles)\n"
+            f"- Exercise 2: {t2_ex_type2} ({t2_ex_time2} mins, {t2_ex_dist2} miles)\n"
             f"- Insights: {t2_insights}"
         )
         success, msg = append_entry_to_monthly_file(formatted_template)
@@ -289,13 +321,16 @@ with tab3:
                 ),
         )
 
-        # 2. Bar layer (Exercise)
-        bars = base.mark_bar(opacity=0.4, xOffset=-25).encode(
+        # 2. Bar layer (Exercise) - Updated for stacking
+        bars = base.mark_bar(opacity=0.6, xOffset=-15).encode(
             y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
-            color=alt.Color('Exercise_Type:N', title="Activity", scale=alt.Scale(
-                domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
-                range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
-            )),
+            color=alt.Color('Exercise_Type:N', 
+                title="Activity", 
+                scale=alt.Scale(
+                    domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
+                    range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
+                )
+            ),
             tooltip=['Date_Label:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
         )
 
