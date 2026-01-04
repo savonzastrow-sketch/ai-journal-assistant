@@ -158,9 +158,10 @@ def get_last_30_days_data():
                     entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
                 elif "- Neuralgia:" in curr_line:
                     entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
-                elif "- Exercise 1:" in curr_line:
+            
+                # Use 'if' instead of 'elif' here so it checks every line for exercises
+                if "- Exercise 1:" in curr_line:
                     try:
-                        # Parse first exercise
                         ex1_type = curr_line.split(":")[1].split("(")[0].strip()
                         ex1_mins = float(curr_line.split("(")[1].split(" mins")[0])
                         if ex1_mins > 0:
@@ -172,9 +173,8 @@ def get_last_30_days_data():
                                 "Exercise_Mins": ex1_mins
                             })
                     except: pass
-                elif "- Exercise 2:" in curr_line:
+                if "- Exercise 2:" in curr_line:
                     try:
-                        # Parse second exercise
                         ex2_type = curr_line.split(":")[1].split("(")[0].strip()
                         ex2_mins = float(curr_line.split("(")[1].split(" mins")[0])
                         if ex2_mins > 0:
@@ -186,7 +186,7 @@ def get_last_30_days_data():
                                 "Exercise_Mins": ex2_mins
                             })
                     except: pass
-            
+                    
     df = pd.DataFrame(data)
     if df.empty: return pd.DataFrame()
     
