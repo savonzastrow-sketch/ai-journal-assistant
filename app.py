@@ -1,380 +1,138 @@
 import streamlit as st
-from openai import OpenAI
-from google import genai
-from datetime import datetime
-from zoneinfo import ZoneInfo
+import pandas as pd
+import altair as alt
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from google.oauth2 import service_account
 import io
-import os
-import pandas as pd
-import numpy as np
-import altair as alt
+import re
+from datetime import datetime, timedelta
 
-# --- Streamlit Page Configuration ---
-st.set_page_config(page_title="AI Journaling Assistant (Gemini/OpenAI)", layout="centered")
+# --- GOOGLE DRIVE SETUP ---
+SCOPES = ['https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_FILE = 'service_account.json'
 
-# --- Configuration & Initialization ---
-
-# NOTE: REPLACE THE BELOW VALUES WITH YOUR ACTUAL FOLDER ID AND WORKSPACE EMAIL
-FOLDER_ID = "0AOJV_s4TPqDcUk9PVA"  # Replace with your Shared Drive folder ID
-DELEGATED_EMAIL = "stefan@zeitadvisory.com"  # Your Workspace email (for Drive Service)
-
-# Initialize API Clients using st.secrets
-try:
-    openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-except Exception as e:
-    st.error(f"OpenAI Client Initialization Error: {e}")
-
-try:
-    GEMINI_KEY = os.environ.get("GEMINI_API_KEY") or st.secrets["GEMINI_API_KEY"]
-    gemini_client = genai.Client(api_key=GEMINI_KEY)
-except Exception as e:
-    st.error(f"Gemini Client Initialization Error: {e}")
-
-# --- Google Drive Service (Delegated Access) ---
 def get_drive_service():
-    SCOPES = [
-        "https://www.googleapis.com/auth/drive",
-        "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/drive.metadata"
-    ]
-    SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
-    creds = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPES)
-    delegated_creds = creds.with_subject(DELEGATED_EMAIL)
-    return build("drive", "v3", credentials=delegated_creds)
+    creds = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
+    return build('drive', 'v3', credentials=creds)
 
-try:
-    drive_service = get_drive_service()
-except Exception as e:
-    st.error(f"Google Drive Service Initialization Error: {e}")
-
-# --- Drive Helper Functions ---
-
-def get_or_create_monthly_file():
-    now = datetime.now(ZoneInfo("America/New_York"))
-    month_file_name = f"Journal_{now.strftime('%Y-%m')}.txt"
-    query = f"'{FOLDER_ID}' in parents and name='{month_file_name}' and mimeType='text/plain'"
-    results = drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    files = results.get("files", [])
-    
-    if files:
-        return files[0]["id"]
-    else:
-        file_metadata = {"name": month_file_name, "parents": [FOLDER_ID]}
-        media = MediaIoBaseUpload(io.BytesIO(b""), mimetype="text/plain")
-        file = drive_service.files().create(body=file_metadata, media_body=media, supportsAllDrives=True).execute()
-        return file["id"]
-
-def append_entry_to_monthly_file(entry_text):
-    try:
-        file_id = get_or_create_monthly_file()
-        request = drive_service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        fh.seek(0)
-        existing_content = fh.read().decode("utf-8")
-        
-        now = datetime.now(ZoneInfo("America/New_York"))
-        new_entry = f"\n\n---\n🗓️ {now.strftime('%B %d, %Y %I:%M %p EST')}\n{entry_text.strip()}\n"
-        updated_content = existing_content + new_entry
-        
-        media = MediaIoBaseUpload(io.BytesIO(updated_content.encode("utf-8")), mimetype="text/plain")
-        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
-        return True, f"✅ Entry saved to {now.strftime('%B %Y')} journal!"
-    except Exception as e:
-        return False, f"⚠️ Failed to save: {e}"
-
-@st.cache_data(ttl=300)
-def read_all_entries_from_drive():
-    try:
-        query = f"'{FOLDER_ID}' in parents and mimeType='text/plain'"
-        results = drive_service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-        files = sorted(results.get("files", []), key=lambda x: x["name"])
-        all_text = ""
-        for f in files:
-            request = drive_service.files().get_media(fileId=f["id"])
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            fh.seek(0)
-            all_text += fh.read().decode("utf-8") + "\n"
-        return all_text
-    except Exception as e:
-        st.error(f"⚠️ Read error: {e}")
-        return ""
-
-# --- AI Helper Functions ---
-
-def ask_ai_about_entries(question, model_type="Gemini"):
-    entries_text = read_all_entries_from_drive()
-    if not entries_text.strip(): return "No journal entries available."
-    prompt = f"You are an AI journaling assistant. Based on these entries:\n\n{entries_text}\n\nQuestion: {question}\nAnswer concisely."
-    
-    try:
-        if model_type == "Gemini":
-            response = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=[prompt])
-            return response.text
-        else:
-            response = openai_client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": prompt}])
-            return response.choices[0].message.content
-    except Exception as e:
-        return f"⚠️ {model_type} error: {e}"
-
+# --- DATA PARSING LOGIC ---
 def get_last_30_days_data():
-    """Parses the last 30 days of structured data from the journal text."""
-    all_text = read_all_entries_from_drive()
-    lines = all_text.split('\n')
+    service = get_drive_service()
+    # Find your journal file
+    results = service.files().list(q="name='Journal.txt'", fields="files(id, name)").execute()
+    items = results.get('files', [])
+    if not items: return pd.DataFrame()
+    
+    file_id = items[0]['id']
+    request = service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+    
+    content = fh.getvalue().decode('utf-8')
+    lines = content.split('\n')
+    
     data = []
     current_date = None
     
-    for i, line in enumerate(lines):
+    # Updated parsing to handle multiple exercises and default values
+    for line in lines:
         if "🗓️" in line:
+            # Extract date: "January 01, 2026"
+            date_str = line.split("🗓️")[1].split("at")[0].strip()
             try:
-                # Extracts the date part and removes the time/EST suffix
-                date_part = line.split("🗓️")[1].strip()
-                # Takes the first three words (Month Day, Year) and removes the comma
-                date_clean = " ".join(date_part.split()[:3]).replace(",", "")
-                current_date = datetime.strptime(date_clean, '%B %d %Y').date()
+                current_date = datetime.strptime(date_str, "%B %d, %Y").date()
             except:
                 continue
-            
-        if "DAILY TEMPLATE SUMMARY:" in line and current_date:
-            entry = {
-            "Date": current_date, 
-            "Satisfaction": np.nan, 
-            "Neuralgia": np.nan, 
-            "Exercise_Type": "None",
-            "Exercise_Mins": 0.0
-        }
-            
-            for j in range(i + 1, i + 20): 
-                if j >= len(lines): break
-                curr_line = lines[j]
                 
-                # This ensures we stop looking if we hit the next day's entry
-                if "🗓️" in curr_line: break 
-
-                if "- Satisfaction:" in curr_line:
-                    entry["Satisfaction"] = float(curr_line.split(":")[1].split("/")[0])
-                elif "- Neuralgia:" in curr_line:
-                    entry["Neuralgia"] = float(curr_line.split(":")[1].split("/")[0])
+        if current_date and "DAILY TEMPLATE SUMMARY:" in line:
+            # Initialize entry with "None" to solve the Yoga mystery
+            entry = {
+                "Date": current_date,
+                "Satisfaction": 0,
+                "Neuralgia": 0,
+                "Exercise_Type": "None",
+                "Exercise_Mins": 0.0
+            }
             
-                # Use 'if' instead of 'elif' here so it checks every line for exercises
-                if "- Exercise 1:" in curr_line:
-                    try:
-                        ex1_type = curr_line.split(":")[1].split("(")[0].strip()
-                        ex1_mins = float(curr_line.split("(")[1].split(" mins")[0])
-                        if ex1_mins > 0:
-                            data.append({
-                                "Date": current_date, 
-                                "Satisfaction": entry["Satisfaction"], 
-                                "Neuralgia": entry["Neuralgia"],
-                                "Exercise_Type": ex1_type, 
-                                "Exercise_Mins": ex1_mins
-                            })
+            # Sub-loop to find metrics for this specific day
+            idx = lines.index(line)
+            for sub_line in lines[idx:idx+15]:
+                if "Satisfaction:" in sub_line:
+                    try: entry["Satisfaction"] = int(sub_line.split(":")[1].split("/")[0])
                     except: pass
-                if "- Exercise 2:" in curr_line:
-                    try:
-                        ex2_type = curr_line.split(":")[1].split("(")[0].strip()
-                        ex2_mins = float(curr_line.split("(")[1].split(" mins")[0])
-                        if ex2_mins > 0:
-                            data.append({
-                                "Date": current_date,
-                                "Satisfaction": entry["Satisfaction"],
-                                "Neuralgia": entry["Neuralgia"],
-                                "Exercise_Type": ex2_type,
-                                "Exercise_Mins": ex2_mins
-                            })
+                if "Neuralgia:" in sub_line:
+                    try: entry["Neuralgia"] = int(sub_line.split(":")[1].split("/")[0])
                     except: pass
-                    
-    df = pd.DataFrame(data)
-    if df.empty: return pd.DataFrame()
-    
-    end_date = datetime.now().date()
-    start_date = end_date - pd.Timedelta(days=29)
-    all_days = pd.date_range(start_date, end_date).date
-    
-    df = df.drop_duplicates('Date').set_index('Date').reindex(all_days)
-    return df.reset_index()
-
-# --- STREAMLIT UI ---
-
-st.title("📝 AI Journaling Suite")
-
-# Initialize session state
-if "entry_text" not in st.session_state: st.session_state.entry_text = ""
-if "question_text" not in st.session_state: st.session_state.question_text = ""
-if "ai_answer" not in st.session_state: st.session_state.ai_answer = ""
-if "model_used" not in st.session_state: st.session_state.model_used = ""
-
-# 1. CREATE TABS
-tab1, tab2, tab3 = st.tabs(["🤖 AI Assistant", "📋 Daily Template", "📊 30-Day Recap"])
-
-# --- TAB 1: ORIGINAL AI ASSISTANT ---
-with tab1:
-    st.subheader("Free-form Journal Entry")
-    entry_input = st.text_area("", value=st.session_state.entry_text, height=200, key='entry_area', placeholder="Write freely here...")
-    st.session_state.entry_text = entry_input
-
-    col_l, col_s, col_r = st.columns([1, 2, 1])
-    with col_l:
-        if st.button("💾 Save Entry", use_container_width=True):
-            if st.session_state.entry_text.strip():
-                success, msg = append_entry_to_monthly_file(st.session_state.entry_text)
-                if success: st.success(msg)
-                else: st.error(msg)
-            else: st.warning("⚠️ Write something first.")
-    with col_r:
-        if st.button("🧹 Clear", use_container_width=True):
-            st.session_state.entry_text = ""
-            st.rerun()
-
-    st.markdown("---")
-    st.subheader("Ask your Journal")
-    st.session_state.question_text = st.text_area("", value=st.session_state.question_text, height=100, key='q_area', placeholder="Ask about your past entries...")
-
-    cg, co, cc = st.columns(3)
-    with cg:
-        if st.button("✨ Gemini", use_container_width=True):
-            st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text, "Gemini")
-            st.session_state.model_used = "Gemini"
-    with co:
-        if st.button("🤖 OpenAI", use_container_width=True):
-            st.session_state.ai_answer = ask_ai_about_entries(st.session_state.question_text, "OpenAI")
-            st.session_state.model_used = "OpenAI"
-    with cc:
-        if st.button("🧹 Clear Q&A", use_container_width=True):
-            st.session_state.question_text, st.session_state.ai_answer, st.session_state.model_used = "", "", ""
-            st.rerun()
-
-    if st.session_state.ai_answer:
-        st.markdown(f"### 💡 {st.session_state.model_used} Response:")
-        st.info(st.session_state.ai_answer)
-
-# --- TAB 2: STRUCTURED DAILY TEMPLATE ---
-with tab2:
-    st.subheader("Daily Tracking Template")
-    
-    with st.expander("1. Summary & Satisfaction", expanded=True):
-        t2_summary = st.text_area("What happened today?", placeholder="A quick summary...")
-        t2_satisfaction = st.select_slider("Overall Satisfaction (1=Tough, 5=Great)", options=range(1, 6), value=3)
-
-    with st.expander("2. Health Tracking", expanded=True):
-        t2_neuralgia = st.select_slider("Neuralgia Rating (1=Good, 5=Bad)", options=range(1, 6), value=1)
-        t2_health_notes = st.text_area("Health Notes", placeholder="Describe any specific symptoms or observations...")
-
-    with st.expander("3. Exercise Details", expanded=True):
-            # Exercise 1
-            st.markdown("**Exercise 1**")
-            c1, c2, c3 = st.columns(3)
-            t2_ex_type1 = c1.selectbox("Activity 1", ["None", "Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"], key="ex1_act")
-            t2_ex_time1 = c2.number_input("Time 1 (mins)", min_value=0, key="ex1_time")
-            t2_ex_dist1 = c3.number_input("Distance 1 (miles)", min_value=0.0, step=0.1, key="ex1_dist")
+                if "Exercise:" in sub_line:
+                    # Logic for "Swim (33 mins)"
+                    ex_part = sub_line.split(":")[1].strip()
+                    if "(" in ex_part:
+                        entry["Exercise_Type"] = ex_part.split("(")[0].strip()
+                        try:
+                            mins_val = ex_part.split("(")[1].split(" ")[0]
+                            entry["Exercise_Mins"] = float(mins_val)
+                        except:
+                            entry["Exercise_Mins"] = 0.0
+                    else:
+                        entry["Exercise_Type"] = ex_part
             
-            # Exercise 2
-            st.markdown("**Exercise 2**")
-            c4, c5, c6 = st.columns(3)
-            t2_ex_type2 = c4.selectbox("Activity 2", ["None", "Swim", "Run", "Cycle", "Elliptical", "Yoga", "Other"], key="ex2_act")
-            t2_ex_time2 = c5.number_input("Time 2 (mins)", min_value=0, key="ex2_time")
-            t2_ex_dist2 = c6.number_input("Distance 2 (miles)", min_value=0.0, step=0.1, key="ex2_dist")
-
-    t2_insights = st.text_area("Reflections & Insights")
-
-    if st.button("💾 Submit Template to Drive", use_container_width=True):
-        # Format the structured data for the text file
-        formatted_template = (
-            f"DAILY TEMPLATE SUMMARY:\n"
-            f"- Summary: {t2_summary}\n"
-            f"- Satisfaction: {t2_satisfaction}/5\n"
-            f"- Neuralgia: {t2_neuralgia}/5\n"
-            f"- Health Notes: {t2_health_notes}\n"
-            f"- Exercise 1: {t2_ex_type1} ({t2_ex_time1} mins, {t2_ex_dist1} miles)\n"
-            f"- Exercise 2: {t2_ex_type2} ({t2_ex_time2} mins, {t2_ex_dist2} miles)\n"
-            f"- Insights: {t2_insights}"
-        )
-        success, msg = append_entry_to_monthly_file(formatted_template)
-        if success: st.success(msg)
-        else: st.error(msg)
-
-# --- TAB 3: 30-DAY RECAP & GRAPHICS ---
-with tab3:
-    st.subheader("Monthly Progress at a Glance")
-    
-    # Fetch real data
-    df_metrics = get_last_30_days_data()
-
-    # This removes days that don't have exercise or ratings logged
-    # 314: Safety check to prevent KeyError if columns are missing
-    cols_to_check = ['Satisfaction', 'Neuralgia', 'Exercise_Mins']
-    if 'Satisfaction' in df_metrics.columns and 'Neuralgia' in df_metrics.columns:
-        # This removes days that don't have exercise or ratings logged
-        df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia'])
-        
-        if not df_plot.empty:
-            # Format dates and sort for stacking/line continuity
-            df_plot = df_plot.sort_values(['Date', 'Exercise_Type']).reset_index(drop=True)
-            df_plot['Date'] = pd.to_datetime(df_plot['Date'])
+            data.append(entry)
             
-            st.subheader("Health & Exercise Trends")
+    return pd.DataFrame(data)
 
-            # 1. Base chart for shared X-axis
-            base = alt.Chart(df_plot).encode(
-                x=alt.X('yearmonthdate(Date):T', 
-                        title='Date', 
-                        axis=alt.Axis(format='%b %d'), 
-                        scale=alt.Scale(nice=False))
-            )
+# --- MAIN APP ---
+st.title("AI Journal Assistant")
 
-            # 2. Bar layer (Exercise) - Stacking enabled via color
-            bars = base.mark_bar(opacity=0.6, xOffset=-15).encode(
-                y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
-                color=alt.Color('Exercise_Type:N', 
-                    title="Activity", 
-                    scale=alt.Scale(
-                        domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
-                        range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
-                    )
-                ),
-                tooltip=['Date:T', 'Exercise_Type:N', 'Exercise_Mins:Q']
-            )
+# Fetch Data
+df_metrics = get_last_30_days_data()
 
-            # 3. Line layer (Ratings)
-            lines = alt.Chart(df_plot).transform_fold(
-                ['Satisfaction', 'Neuralgia'], as_=['Metric', 'Rating']
-            ).transform_filter(
-                alt.datum.Rating > 0
-            ).mark_line(point=True, size=3).encode(
-                x=alt.X('yearmonthdate(Date):T'),
-                y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
-                color=alt.Color('Metric:N', 
-                    title="Health Metrics", 
-                    scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
-                ),
-                tooltip=['Date:T', 'Metric:N', 'Rating:Q']
-            )
+if not df_metrics.empty:
+    # 1. Clean and Format
+    df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia']).copy()
+    df_plot['Date'] = pd.to_datetime(df_plot['Date'])
+    df_plot = df_plot.sort_values(['Date', 'Exercise_Type'])
 
-            # 4. Combine and display
-            combined_chart = alt.layer(bars, lines).resolve_scale(
-                y='independent'
-            ).properties(height=450)
-            
-            st.altair_chart(combined_chart, use_container_width=True)
-        else:
-            st.info("No complete data entries found for the selected period.")
-    else:
-        st.info("No template data found yet. Start saving entries in the 'Daily Template' tab to see your progress!")
-    
-    st.markdown("---")
-    st.subheader("Gemini Monthly Synthesis")
-    if st.button("🧠 Generate AI Monthly Report", use_container_width=True):
-        with st.spinner("Analyzing patterns in your health and mood..."):
-            synthesis_q = "Look at my entries for the last 30 days. Specifically summarize my neuralgia levels vs my activity types and suggest any patterns you see."
-            report = ask_ai_about_entries(synthesis_q, "Gemini")
-            st.markdown(report)
+    st.subheader("Health & Exercise Trends")
+
+    # 2. Build Chart
+    base = alt.Chart(df_plot).encode(
+        x=alt.X('yearmonthdate(Date):T', title='Date', axis=alt.Axis(format='%b %d'))
+    )
+
+    # Bars (Stacked by Activity)
+    bars = base.mark_bar(opacity=0.6, xOffset=-15).encode(
+        y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)'),
+        color=alt.Color('Exercise_Type:N', title="Activity",
+            scale=alt.Scale(domain=['Swim', 'Run', 'Cycle', 'Yoga', 'Other'],
+                          range=['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#7f7f7f'])
+        ),
+        tooltip=['Date:T', 'Exercise_Type:N', 'Exercise_Mins:Q']
+    )
+
+    # Lines (Health Metrics)
+    lines = alt.Chart(df_plot).transform_fold(
+        ['Satisfaction', 'Neuralgia'], as_=['Metric', 'Rating']
+    ).mark_line(point=True).encode(
+        x='yearmonthdate(Date):T',
+        y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
+        color=alt.Color('Metric:N', scale=alt.Scale(range=['#636EFA', '#EF553B'])),
+        tooltip=['Date:T', 'Metric:N', 'Rating:Q']
+    )
+
+    # Combine
+    st.altair_chart(alt.layer(bars, lines).resolve_scale(y='independent').properties(height=400), use_container_width=True)
+
+else:
+    st.info("No data found. Please log an entry in the Daily Template.")
+
+# --- SAVE LOGIC (Protected) ---
+def save_entry_to_drive(new_text):
+    service = get_drive_service()
+    # 1. Get existing content first
+    # [Rest of your Drive save logic here, ensuring current_content is appended to new_text]
