@@ -311,62 +311,62 @@ with tab3:
     df_metrics = get_last_30_days_data()
 
     # This removes days that don't have exercise or ratings logged
-    df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia', 'Exercise_Mins'])
-    
-    if not df_metrics.empty:
-        # Format dates for the bottom of the chart (e.g., Dec 27)
-        df_plot = df_plot.sort_values(['Date', 'Exercise_Type']).reset_index(drop=True)
+    # 314: Safety check to prevent KeyError if columns are missing
+    cols_to_check = ['Satisfaction', 'Neuralgia', 'Exercise_Mins']
+    if not df_metrics.empty and all(col in df_metrics.columns for col in cols_to_check):
+        # This removes days that don't have exercise or ratings logged
+        df_plot = df_metrics.dropna(subset=cols_to_check)
         
-        st.subheader("Health & Exercise Trends")
-        
-        # 1. Base chart to share the X-axis (Dates)
-        base = alt.Chart(df_plot).encode(
-            x=alt.X('yearmonthdate(Date):T', 
-                title='Date', 
-                axis=alt.Axis(format='%b %d'), 
-                scale=alt.Scale(nice=False)  # This prevents the chart from adding extra days
+        if not df_plot.empty:
+            # Format dates and sort for stacking/line continuity
+            df_plot = df_plot.sort_values(['Date', 'Exercise_Type']).reset_index(drop=True)
+            
+            st.subheader("Health & Exercise Trends")
+
+            # 1. Base chart for shared X-axis
+            base = alt.Chart(df_plot).encode(
+                x=alt.X('yearmonthdate(Date):T', 
+                        title='Date', 
+                        axis=alt.Axis(format='%b %d'), 
+                        scale=alt.Scale(nice=False))
+            )
+
+            # 2. Bar layer (Exercise) - Stacking enabled via color
+            bars = base.mark_bar(opacity=0.6, xOffset=-15).encode(
+                y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
+                color=alt.Color('Exercise_Type:N', 
+                    title="Activity", 
+                    scale=alt.Scale(
+                        domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
+                        range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
+                    )
                 ),
-        )
+                tooltip=['Date:T', 'Exercise_Type:N', 'Exercise_Mins:Q']
+            )
 
-        # 2. Bar layer (Exercise) - Updated for stacking
-        bars = base.mark_bar(opacity=0.6, xOffset=-15).encode(
-            y=alt.Y('Exercise_Mins:Q', title='Exercise (Mins)', axis=alt.Axis(titleColor='#ff7f0e')),
-            color=alt.Color('Exercise_Type:N', 
-                title="Activity", 
-                scale=alt.Scale(
-                    domain=['Swim', 'Run', 'Cycle', 'Elliptical', 'Yoga', 'Other'],
-                    range=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#7f7f7f']
-                )
-            ),
-            tooltip=['Date_Label:N', 'Exercise_Type:N', 'Exercise_Mins:Q']
-        )
+            # 3. Line layer (Ratings)
+            lines = alt.Chart(df_plot).transform_fold(
+                ['Satisfaction', 'Neuralgia'], as_=['Metric', 'Rating']
+            ).transform_filter(
+                alt.datum.Rating > 0
+            ).mark_line(point=True, size=3).encode(
+                x=alt.X('yearmonthdate(Date):T'),
+                y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
+                color=alt.Color('Metric:N', 
+                    title="Health Metrics", 
+                    scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
+                ),
+                tooltip=['Date:T', 'Metric:N', 'Rating:Q']
+            )
 
-        # 3. Line layer (Ratings) - Explicitly cleaning and forcing visibility
-        lines = alt.Chart(df_plot).transform_fold(
-            ['Satisfaction', 'Neuralgia'],
-            as_=['Metric', 'Rating']
-        ).transform_filter(
-            # This line ensures we only try to plot real numbers
-            alt.datum.Rating > 0 
-        ).mark_line(point=True, size=3).encode(
-            x=alt.X('yearmonthdate(Date):T', 
-                axis=alt.Axis(format='%b %d'), 
-                scale=alt.Scale(nice=False)
-            ),
-            y=alt.Y('Rating:Q', title='Rating (1-5)', scale=alt.Scale(domain=[1, 5])),
-            color=alt.Color('Metric:N', 
-                title="Health Metrics", 
-                scale=alt.Scale(domain=['Satisfaction', 'Neuralgia'], range=['#636EFA', '#EF553B'])
-            ),
-            tooltip=['Date_Label:N', 'Metric:N', 'Rating:Q']
-        )
-        
-        # 4. Combine with independent Y-axes
-        combined_chart = alt.layer(bars, lines).resolve_scale(
-            y='independent'
-        ).properties(height=450)
-
-        st.altair_chart(combined_chart, use_container_width=True)
+            # 4. Combine and display
+            combined_chart = alt.layer(bars, lines).resolve_scale(
+                y='independent'
+            ).properties(height=450)
+            
+            st.altair_chart(combined_chart, use_container_width=True)
+        else:
+            st.info("No complete data entries found for the selected period.")
     else:
         st.info("No template data found yet. Start saving entries in the 'Daily Template' tab to see your progress!")
     
