@@ -320,6 +320,7 @@ with tab3:
         if not df_plot.empty:
             # Format dates and sort for stacking/line continuity
             df_plot = df_plot.sort_values(['Date', 'Exercise_Type']).reset_index(drop=True)
+            df_plot['Date'] = pd.to_datetime(df_plot['Date'])
             
             st.subheader("Health & Exercise Trends")
 
