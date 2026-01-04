@@ -313,7 +313,7 @@ with tab3:
     # This removes days that don't have exercise or ratings logged
     # 314: Safety check to prevent KeyError if columns are missing
     cols_to_check = ['Satisfaction', 'Neuralgia', 'Exercise_Mins']
-    if not df_metrics.empty and all(col in df_metrics.columns for col in cols_to_check):
+    if 'Satisfaction' in df_metrics.columns and 'Neuralgia' in df_metrics.columns:
         # This removes days that don't have exercise or ratings logged
         df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia'])
         
