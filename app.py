@@ -315,7 +315,7 @@ with tab3:
     cols_to_check = ['Satisfaction', 'Neuralgia', 'Exercise_Mins']
     if not df_metrics.empty and all(col in df_metrics.columns for col in cols_to_check):
         # This removes days that don't have exercise or ratings logged
-        df_plot = df_metrics.dropna(subset=cols_to_check)
+        df_plot = df_metrics.dropna(subset=['Satisfaction', 'Neuralgia'])
         
         if not df_plot.empty:
             # Format dates and sort for stacking/line continuity
