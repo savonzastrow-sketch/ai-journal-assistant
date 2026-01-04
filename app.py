@@ -146,7 +146,14 @@ def get_last_30_days_data():
                 continue
             
         if "DAILY TEMPLATE SUMMARY:" in line and current_date:
-            entry = {"Date": current_date, "Satisfaction": np.nan, "Neuralgia": np.nan, "Exercise_Mins": 0, "Exercise_Type": "None"}
+            entry = {
+            "Date": current_date, 
+            "Satisfaction": np.nan, 
+            "Neuralgia": np.nan, 
+            "Exercise_Type": "None",
+            "Exercise_Mins": 0.0
+        }
+            
             for j in range(i + 1, i + 20): 
                 if j >= len(lines): break
                 curr_line = lines[j]
@@ -179,10 +186,10 @@ def get_last_30_days_data():
                         ex2_mins = float(curr_line.split("(")[1].split(" mins")[0])
                         if ex2_mins > 0:
                             data.append({
-                                "Date": current_date, 
-                                "Satisfaction": entry["Satisfaction"], 
+                                "Date": current_date,
+                                "Satisfaction": entry["Satisfaction"],
                                 "Neuralgia": entry["Neuralgia"],
-                                "Exercise_Type": ex2_type, 
+                                "Exercise_Type": ex2_type,
                                 "Exercise_Mins": ex2_mins
                             })
                     except: pass
@@ -308,7 +315,7 @@ with tab3:
     
     if not df_metrics.empty:
         # Format dates for the bottom of the chart (e.g., Dec 27)
-        df_plot = df_plot.sort_values('Date').reset_index(drop=True)
+        df_plot = df_plot.sort_values(['Date', 'Exercise_Type']).reset_index(drop=True)
         
         st.subheader("Health & Exercise Trends")
         
