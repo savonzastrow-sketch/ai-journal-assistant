@@ -174,6 +174,23 @@ if "model_used" not in st.session_state: st.session_state.model_used = ""
 
 # --- MAIN INTERFACE (FORMERLY TAB 1) ---
 st.subheader("Free-form Journal Entry")
+
+# 1. New Tagging Dropdown Menus
+t_col1, t_col2 = st.columns(2)
+with t_col1:
+    topic_tag = st.selectbox("Topic Tag", ["None", "#health", "#exercise", "#relationships", "#work", "#learning"])
+with t_col2:
+    signal_tag = st.selectbox("Signal Tag", [
+        "None", 
+        "#event (something that happened)", 
+        "#observation (something you noticed)", 
+        "#feeling (emotional state)", 
+        "#insight (interpretation or meaning)", 
+        "#decision (choice made or planned)", 
+        "#question (open question for later)"
+    ])
+
+# 2. Entry Text Area
 entry_input = st.text_area("", value=st.session_state.entry_text, height=200, key='entry_area', placeholder="Write freely here...")
 st.session_state.entry_text = entry_input
 
@@ -181,7 +198,12 @@ col_l, col_s, col_r = st.columns([1, 2, 1])
 with col_l:
     if st.button("💾 Save Entry", use_container_width=True):
         if st.session_state.entry_text.strip():
-            success, msg = append_entry_to_monthly_file(st.session_state.entry_text)
+            # Automatically append selected tags to the text
+            selected_topic = topic_tag if topic_tag != "None" else ""
+            selected_signal = signal_tag.split(" ")[0] if signal_tag != "None" else ""
+            tagged_entry = f"{selected_topic} {selected_signal}\n{st.session_state.entry_text}".strip()
+            
+            success, msg = append_entry_to_monthly_file(tagged_entry)
             if success: st.success(msg)
             else: st.error(msg)
         else: st.warning("⚠️ Write something first.")
