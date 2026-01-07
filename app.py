@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import numpy as np
 import altair as alt
+import gspread
 
 # --- Streamlit Page Configuration ---
 st.set_page_config(page_title="AI Journaling Assistant (Gemini/OpenAI)", layout="centered")
@@ -49,6 +50,24 @@ try:
     drive_service = get_drive_service()
 except Exception as e:
     st.error(f"Google Drive Service Initialization Error: {e}")
+
+# --- Google Sheets Access (Activity Log) ---
+def get_activity_log_data():
+    try:
+        # Re-use your existing service account secrets
+        info = st.secrets["gcp_service_account"]
+        client = gspread.service_account_from_dict(info)
+        
+        # Open the specific sheet by name
+        sheet = client.open("Daily Activity Log").sheet1
+        all_values = sheet.get_all_values()
+        
+        if len(all_values) > 1:
+            df = pd.DataFrame(all_values[1:], columns=all_values[0])
+            return df.to_string(index=False)
+        return "No activity log data found."
+    except Exception as e:
+        return f"Error accessing Activity Log: {e}"
 
 # --- Drive Helper Functions ---
 
@@ -114,8 +133,24 @@ def read_all_entries_from_drive():
 
 def ask_ai_about_entries(question, model_type="Gemini"):
     entries_text = read_all_entries_from_drive()
-    if not entries_text.strip(): return "No journal entries available."
-    prompt = f"You are an AI journaling assistant. Based on these entries:\n\n{entries_text}\n\nQuestion: {question}\nAnswer concisely."
+    activity_data = get_activity_log_data()  # Fetch sheet data
+    
+    if not entries_text.strip() and "Error" in activity_data:
+        return "No journal entries or activity data available."
+    
+    # Combined Prompt for the AI
+    prompt = f"""
+    You are an AI journaling assistant. You have access to two data sources:
+    
+    1. JOURNAL ENTRIES:
+    {entries_text}
+    
+    2. ACTIVITY LOG (Exercise & Health Metrics):
+    {activity_data}
+    
+    Question: {question}
+    Answer concisely, correlating data from both sources if relevant.
+    """
     
     try:
         if model_type == "Gemini":
